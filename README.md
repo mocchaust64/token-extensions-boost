@@ -1,6 +1,32 @@
 # Solana Token Extension SDK
 
-SDK đơn giản hóa việc tương tác với các Token Extensions trên Solana, giúp developers dễ dàng tạo và quản lý tokens với các tính năng mở rộng.
+SDK đơn giản hóa việc tương tác với các Token Extensions trên Solana, giúp developers dễ dàng tạo và quản lý tokens với các tính năng mở rộng mà không cần phải xử lý các chi tiết phức tạp của Solana Token Extensions Program.
+
+## Giới thiệu
+
+Solana Token Extensions (Token-2022) mang đến nhiều tính năng mới cho token trên Solana, giúp tokens trở nên linh hoạt và có thể tùy chỉnh hơn. SDK này được tạo ra nhằm mục đích đơn giản hóa việc sử dụng các tính năng này, giúp developers có thể tích hợp chúng vào ứng dụng của mình một cách dễ dàng.
+
+## Tính năng hiện có
+
+SDK hiện đang hỗ trợ các Token Extensions sau:
+
+- **Transfer Fee**: Tạo token với phí chuyển khoản tự động
+- **Metadata Pointer**: Lưu trữ và quản lý metadata cho token
+- **Immutable Owner**: Tạo tài khoản token với chủ sở hữu không thể thay đổi
+- **Confidential Transfer**: Thực hiện giao dịch chuyển token bảo mật, che giấu số lượng
+
+## Roadmap
+
+Các Token Extensions sắp được phát triển và tích hợp vào SDK:
+
+- **Transfer Hooks**: Cho phép thực thi logic tùy chỉnh khi token được chuyển khoản
+- **Permanent Delegation**: Ủy quyền vĩnh viễn quyền quản lý token cho một địa chỉ khác
+- **Non-transferable**: Tạo token không thể chuyển nhượng (soulbound tokens)
+- **Default Account State**: Thiết lập trạng thái mặc định cho các tài khoản token mới
+- **Interest-Bearing**: Tạo token có khả năng tính lãi theo thời gian
+- **Mint Close Authority**: Thiết lập quyền đóng tài khoản mint
+
+Ưu tiên phát triển sẽ dựa trên phản hồi từ cộng đồng và nhu cầu của người dùng. Nếu bạn muốn đóng góp vào việc phát triển một trong các tính năng trên, vui lòng tạo issue hoặc liên hệ với chúng tôi.
 
 ## Cài đặt
 
@@ -8,103 +34,20 @@ SDK đơn giản hóa việc tương tác với các Token Extensions trên Sola
 npm install solana-token-extension-sdk
 ```
 
-## Tính năng
+## Ví dụ
 
-SDK này hỗ trợ các Token Extensions sau:
+Xem các ví dụ đầy đủ trong thư mục `examples`:
 
-- **Transfer Fee**: Tạo token với phí chuyển khoản tự động
-- Các extension khác đang được phát triển...
+- [Transfer Fee Example](./examples/basic-transfer-fee-example.ts): Ví dụ cơ bản về sử dụng Transfer Fee extension
+- [Multi-account Transfer Fee Example](./examples/multi-account-transfer-fee-example.ts): Ví dụ nâng cao về Transfer Fee với nhiều tài khoản
+- [Metadata Pointer Example](./examples/metadata-pointer-example.ts): Ví dụ về quản lý metadata cho token
+- [Transfer Fee with Metadata Example](./examples/transfer-fee-with-metadata-example.ts): Ví dụ kết hợp cả Transfer Fee và Metadata
+- [Immutable Owner Example](./examples/immutable-owner-example.ts): Ví dụ tạo tài khoản token với chủ sở hữu không thể thay đổi
+- [Confidential Transfer Example](./examples/confidential-transfer-example.ts): Ví dụ thực hiện giao dịch chuyển token bảo mật
 
-## Cách sử dụng
+## Tài liệu hướng dẫn
 
-### Transfer Fee Extension
-
-Transfer Fee cho phép thu phí tự động khi token được chuyển. Phí được giữ lại tại tài khoản người nhận và có thể được thu thập bởi chủ sở hữu token.
-
-#### Tạo token với Transfer Fee
-
-```typescript
-import { Connection, Keypair } from "@solana/web3.js";
-import { TransferFeeToken } from "solana-token-extension-sdk";
-
-// Kết nối tới Solana
-const connection = new Connection("https://api.devnet.solana.com");
-
-// Khởi tạo các keypair cần thiết
-const payer = Keypair.fromSecretKey(/* keypair bí mật */);
-const transferFeeConfigAuthority = Keypair.generate();
-const withdrawWithheldAuthority = Keypair.generate();
-
-// Tạo token với phí chuyển 1%
-const token = await TransferFeeToken.create(
-  connection,
-  payer,
-  {
-    decimals: 9,
-    mintAuthority: payer.publicKey,
-    transferFeeConfig: {
-      feeBasisPoints: 100, // 1%
-      maxFee: BigInt(10_000_000_000), // Tối đa 10 token
-      transferFeeConfigAuthority,
-      withdrawWithheldAuthority,
-    }
-  }
-);
-
-// Lấy địa chỉ mint
-const mintAddress = token.getMint();
-console.log(`Token đã được tạo: ${mintAddress.toString()}`);
-```
-
-#### Chuyển token với fee
-
-```typescript
-// Chuyển token từ source đến destination
-const signature = await token.transfer(
-  sourceTokenAccount,
-  destinationTokenAccount,
-  owner, // Chủ sở hữu tài khoản nguồn
-  BigInt(1_000_000_000), // Số lượng token (1 với 9 decimals)
-  9 // số thập phân
-);
-```
-
-#### Thu thập phí từ các tài khoản
-
-```typescript
-// Thu thập phí từ các tài khoản về mint
-const signature = await token.harvestWithheldTokensToMint(
-  [tokenAccount1, tokenAccount2]
-);
-```
-
-#### Rút phí từ mint
-
-```typescript
-// Rút phí từ mint về tài khoản đích
-const signature = await token.withdrawFeesFromMint(
-  destinationTokenAccount
-);
-```
-
-## Ví dụ đầy đủ
-
-Xem ví dụ đầy đủ trong thư mục `examples`:
-
-- [Transfer Fee Example](./examples/transfer-fee-example.ts): Ví dụ đầy đủ về sử dụng Transfer Fee extension
-
-Để chạy ví dụ:
-
-```bash
-# Cài đặt các dependency
-npm install
-
-# Build SDK
-npm run build
-
-# Chạy ví dụ Transfer Fee trên devnet
-npx ts-node examples/transfer-fee-example.ts
-```
+Tài liệu hướng dẫn chi tiết sẽ sớm được cung cấp. Trong thời gian chờ đợi, bạn có thể tham khảo các ví dụ trong thư mục `examples` để hiểu cách sử dụng SDK.
 
 ## Đóng góp
 

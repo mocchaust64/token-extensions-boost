@@ -58,6 +58,55 @@ npm run build
 npx ts-node examples/multi-account-transfer-fee-example.ts
 ```
 
+### 3. transfer-fee-with-metadata-example.ts
+
+An example demonstrating how to combine Transfer Fee and Metadata Pointer extensions in a single token.
+
+#### Features Demonstrated
+
+- Creating a token with both Transfer Fee and Metadata Pointer extensions
+- Setting up token metadata with name, symbol, URI, and additional custom fields
+- Minting tokens to the owner
+- Transferring tokens with automatic fee deduction
+- Harvesting fees from recipient accounts to the mint
+- Withdrawing fees from the mint to a destination account
+- Updating metadata fields after token creation
+
+#### How to Run
+
+```bash
+# Build SDK
+npm run build
+
+# Run example
+npx ts-node examples/transfer-fee-with-metadata-example.ts
+```
+
+## Metadata Pointer Extension Example
+
+The SDK also provides an example for working with the Metadata Pointer extension:
+
+### metadata-pointer-example.ts
+
+This example demonstrates how to create and manage tokens with metadata.
+
+#### Features Demonstrated
+
+- Creating a token with metadata pointer extension
+- Setting token metadata (name, symbol, URI)
+- Adding custom metadata fields
+- Retrieving token metadata
+- Updating metadata fields
+- Removing metadata fields
+- Updating metadata authority
+- Testing updates with new authority
+
+#### How to Run
+
+```bash
+npx ts-node examples/metadata-pointer-example.ts
+```
+
 ## Requirements
 
 - Solana CLI connection: `solana config set --url devnet`
@@ -99,4 +148,10 @@ Transaction: https://explorer.solana.com/tx/WithdrawTransactionSignatureHere1234
 - Recipient Token Account: RecipientTokenAccountHere123456789
 - View details on Solana Explorer (devnet):
   https://explorer.solana.com/address/TokenAddressHere123456789?cluster=devnet
-``` 
+```
+
+## Notes
+
+- These examples use the Solana devnet by default
+- The examples attempt to use your Solana CLI wallet at the default location (~/.config/solana/id.json)
+- If a wallet is not found, the examples will generate a new keypair and request an airdrop 

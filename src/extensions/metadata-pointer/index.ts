@@ -17,11 +17,13 @@ import {
   getTokenMetadata,
   LENGTH_SIZE,
   TYPE_SIZE,
+  createUpdateMetadataPointerInstruction,
 } from "@solana/spl-token";
 import {
   createInitializeInstruction,
   createUpdateFieldInstruction,
   createRemoveKeyInstruction,
+  createUpdateAuthorityInstruction,
   pack,
   TokenMetadata,
 } from "@solana/spl-token-metadata";
@@ -56,11 +58,9 @@ export class MetadataPointerToken extends Token {
     }
   ): Promise<MetadataPointerToken> {
     const { decimals, mintAuthority, metadata } = params;
-    
-    // Create mint keypair
+
     const mintKeypair = Keypair.generate();
-    
-    // Format metadata for on-chain storage
+
     const tokenMetadata: TokenMetadata = {
       mint: mintKeypair.publicKey,
       name: metadata.name,
@@ -71,14 +71,12 @@ export class MetadataPointerToken extends Token {
       ),
     };
 
-    // Calculate sizes and rent
     const mintLen = getMintLen([ExtensionType.MetadataPointer]);
     const metadataLen = TYPE_SIZE + LENGTH_SIZE + pack(tokenMetadata).length;
     const lamports = await connection.getMinimumBalanceForRentExemption(
       mintLen + metadataLen
     );
 
-    // Create mint account
     const transaction = new Transaction().add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -87,14 +85,14 @@ export class MetadataPointerToken extends Token {
         lamports,
         programId: TOKEN_2022_PROGRAM_ID,
       }),
-      // Initialize metadata pointer to point to the mint itself
+      
       createInitializeMetadataPointerInstruction(
         mintKeypair.publicKey,
         payer.publicKey,
         mintKeypair.publicKey,
         TOKEN_2022_PROGRAM_ID
       ),
-      // Initialize mint
+      
       createInitializeMintInstruction(
         mintKeypair.publicKey,
         decimals,
@@ -102,7 +100,7 @@ export class MetadataPointerToken extends Token {
         null,
         TOKEN_2022_PROGRAM_ID
       ),
-      // Initialize metadata
+      
       createInitializeInstruction({
         programId: TOKEN_2022_PROGRAM_ID,
         metadata: mintKeypair.publicKey,
@@ -115,7 +113,6 @@ export class MetadataPointerToken extends Token {
       })
     );
 
-    // Add instructions for additional metadata fields if any
     if (metadata.additionalMetadata) {
       for (const [key, value] of Object.entries(metadata.additionalMetadata)) {
         transaction.add(
@@ -136,6 +133,43 @@ export class MetadataPointerToken extends Token {
     ]);
 
     return new MetadataPointerToken(connection, mintKeypair.publicKey, metadata);
+  }
+
+  static async fromMint(
+    connection: Connection, 
+    mint: PublicKey
+  ): Promise<MetadataPointerToken | null> {
+    try {
+      const tokenMetadata = await getTokenMetadata(
+        connection,
+        mint,
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+
+      if (!tokenMetadata) {
+        return null;
+      }
+
+      const additionalMetadata: Record<string, string> = {};
+      if (tokenMetadata.additionalMetadata) {
+        for (const [key, value] of tokenMetadata.additionalMetadata) {
+          additionalMetadata[key] = value;
+        }
+      }
+
+      const metadata: MetadataConfig = {
+        name: tokenMetadata.name,
+        symbol: tokenMetadata.symbol,
+        uri: tokenMetadata.uri,
+        additionalMetadata
+      };
+
+      return new MetadataPointerToken(connection, mint, metadata);
+    } catch (error) {
+      console.error("Error loading metadata token:", error);
+      return null;
+    }
   }
 
   async getMetadataPointer(): Promise<any> {
@@ -163,7 +197,22 @@ export class MetadataPointerToken extends Token {
     field: string,
     value: string
   ): Promise<string> {
-    const transaction = new Transaction().add(
+ 
+    const additionalRent = await this.connection.getMinimumBalanceForRentExemption(
+      1024 
+    );
+    
+    const transaction = new Transaction();
+
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: authority.publicKey,
+        toPubkey: this.mint,
+        lamports: additionalRent,
+      })
+    );
+
+    transaction.add(
       createUpdateFieldInstruction({
         programId: TOKEN_2022_PROGRAM_ID,
         metadata: this.mint,
@@ -182,7 +231,10 @@ export class MetadataPointerToken extends Token {
     authority: Keypair,
     key: string
   ): Promise<string> {
-    const transaction = new Transaction().add(
+    
+    const transaction = new Transaction();
+
+    transaction.add(
       createRemoveKeyInstruction({
         programId: TOKEN_2022_PROGRAM_ID,
         metadata: this.mint,
@@ -194,6 +246,101 @@ export class MetadataPointerToken extends Token {
 
     return await sendAndConfirmTransaction(this.connection, transaction, [
       authority,
+    ]);
+  }
+  
+  async updateMetadataPointer(
+    authority: Keypair,
+    newMetadataAddress: PublicKey
+  ): Promise<string> {
+    const transaction = new Transaction().add(
+      createUpdateMetadataPointerInstruction(
+        this.mint,
+        authority.publicKey,
+        newMetadataAddress,
+        [],
+        TOKEN_2022_PROGRAM_ID
+      )
+    );
+
+    return await sendAndConfirmTransaction(this.connection, transaction, [
+      authority,
+    ]);
+  }
+  
+  async updateMetadataBatch(
+    authority: Keypair,
+    fields: Record<string, string>
+  ): Promise<string> {
+    
+    const additionalRent = await this.connection.getMinimumBalanceForRentExemption(
+      1024 * Object.keys(fields).length 
+    );
+    
+    const transaction = new Transaction();
+
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: authority.publicKey,
+        toPubkey: this.mint,
+        lamports: additionalRent,
+      })
+    );
+
+    for (const [field, value] of Object.entries(fields)) {
+      transaction.add(
+        createUpdateFieldInstruction({
+          programId: TOKEN_2022_PROGRAM_ID,
+          metadata: this.mint,
+          updateAuthority: authority.publicKey,
+          field: field,
+          value: value,
+        })
+      );
+    }
+    
+    return await sendAndConfirmTransaction(this.connection, transaction, [
+      authority,
+    ]);
+  }
+  
+  async getNFTMetadata(): Promise<any> {
+    const tokenMetadata = await this.getTokenMetadata();
+    if (!tokenMetadata || !tokenMetadata.uri) {
+      throw new Error("No metadata URI found for this token");
+    }
+    
+    try {
+      const response = await fetch(tokenMetadata.uri);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch metadata: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching off-chain metadata:", error);
+      throw error;
+    }
+  }
+  
+  getMetadataConfig(): MetadataConfig {
+    return this.metadata;
+  }
+
+  async updateMetadataAuthority(
+    currentAuthority: Keypair,
+    newAuthority: PublicKey | null
+  ): Promise<string> {
+    const transaction = new Transaction().add(
+      createUpdateAuthorityInstruction({
+        programId: TOKEN_2022_PROGRAM_ID,
+        metadata: this.mint,
+        oldAuthority: currentAuthority.publicKey,
+        newAuthority: newAuthority,
+      })
+    );
+
+    return await sendAndConfirmTransaction(this.connection, transaction, [
+      currentAuthority,
     ]);
   }
 } 

@@ -260,7 +260,7 @@ export class TransferFeeToken extends Token {
           accountsWithFees.push(pubkey);
         }
       } catch (error) {
-        // Skip invalid accounts
+        
       }
     }
 

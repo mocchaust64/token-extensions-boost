@@ -22,7 +22,7 @@ export interface TransferHookConfig extends TokenExtensionConfig {
 }
 
 export interface InterestBearingConfig extends TokenExtensionConfig {
-  rate: number; // Annual interest rate in basis points
+  rate: number; 
 }
 
 export interface MetadataConfig {
@@ -33,7 +33,7 @@ export interface MetadataConfig {
 }
 
 export interface SoulboundConfig extends TokenExtensionConfig {
-  // No additional config needed
+  
 }
 
 export interface BaseExtensionConfig {
