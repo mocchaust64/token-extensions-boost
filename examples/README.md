@@ -1,76 +1,102 @@
-# Ví dụ sử dụng Solana Token Extension SDK
+# Solana Token Extension SDK Examples
 
-Thư mục này chứa các ví dụ về cách sử dụng Solana Token Extension SDK trong các tình huống thực tế.
+This directory contains examples of how to use the Solana Token Extension SDK in real-world scenarios.
 
-## Cài đặt
+## Installation
 
-Trước khi chạy ví dụ, đảm bảo bạn đã cài đặt các dependency:
+Before running the examples, make sure you have installed the dependencies:
 
 ```bash
 npm install
 ```
 
-## Ví dụ transfer-fee-example.ts
+## Transfer Fee Extension Examples
 
-Ví dụ này minh họa cách tạo và sử dụng token với Transfer Fee extension.
+The SDK provides two examples that demonstrate how to create and use tokens with the Transfer Fee extension:
 
-### Tính năng được demo
+### 1. basic-transfer-fee-example.ts
 
-- Tạo token với phí chuyển khoản 1%
-- Mint token cho một địa chỉ
-- Chuyển token với phí tự động được trừ
-- Thu thập phí từ tài khoản người nhận về mint
-- Rút phí từ mint vào tài khoản đích
+A basic example illustrating the core features of the Transfer Fee extension with a single recipient.
 
-### Cách chạy
+#### Features Demonstrated
+
+- Creating a token with 1% transfer fee
+- Minting tokens to an address
+- Transferring tokens with automatic fee deduction
+- Harvesting fees from recipient accounts to the mint
+- Withdrawing fees from the mint to a destination account
+
+#### How to Run
 
 ```bash
 # Build SDK
 npm run build
 
-# Chạy ví dụ
-npx ts-node examples/transfer-fee-example.ts
+# Run example
+npx ts-node examples/basic-transfer-fee-example.ts
 ```
 
-### Yêu cầu
+### 2. multi-account-transfer-fee-example.ts
 
-- Kết nối Solana CLI: `solana config set --url devnet`
-- Tài khoản với SOL trên devnet: `solana airdrop 1 <địa chỉ ví> --url devnet`
+An advanced example illustrating how to handle multiple recipients and find/collect fees from multiple accounts.
 
-### Output mẫu
+#### Features Demonstrated
 
-Khi chạy thành công, bạn sẽ thấy output như sau:
+- Creating a token with 1% transfer fee
+- Minting tokens to the owner
+- Transferring tokens to multiple recipients
+- Finding accounts with withheld fees
+- Harvesting fees from accounts and withdrawing them to the owner
+
+#### How to Run
+
+```bash
+# Build SDK
+npm run build
+
+# Run example
+npx ts-node examples/multi-account-transfer-fee-example.ts
+```
+
+## Requirements
+
+- Solana CLI connection: `solana config set --url devnet`
+- Account with SOL on devnet: `solana airdrop 1 <wallet address> --url devnet`
+
+## Sample Output
+
+When running the basic example successfully, you will see output similar to the following:
 
 ```
 Using wallet: 5YourWalletAddressHere123456789
-Số dư: 1.5 SOL
+Balance: 1.5 SOL
 
-1. Tạo token với phí chuyển khoản 1%
-Token đã được tạo: TokenAddressHere123456789
+1. Creating token with 1% transfer fee
+Token created: TokenAddressHere123456789
 
-2. Mint token cho người tạo
-Đã mint 1000 token vào tài khoản TokenAccountAddressHere123456789
+2. Minting tokens to owner
+Minted 1000 tokens to TokenAccountAddressHere123456789
 
-Người nhận: RecipientAddressHere123456789
-Tài khoản token của người nhận: RecipientTokenAccountHere123456789
+Recipient: RecipientAddressHere123456789
+Recipient token account: RecipientTokenAccountHere123456789
 
-3. Chuyển token cho người nhận với phí 1%
-Phí dự kiến: 1 token
-Đã chuyển 100 token
+3. Transferring tokens with 1% fee
+Expected fee: 1 tokens
+Transferred 100 tokens
 Transaction: https://explorer.solana.com/tx/TransactionSignatureHere123456789?cluster=devnet
 
-4. Thu thập phí từ tài khoản đích về mint
-Đã thu thập phí về mint
+4. Harvesting fees from accounts to mint
+Fees harvested to mint
 Transaction: https://explorer.solana.com/tx/HarvestTransactionSignatureHere123456789?cluster=devnet
 
-5. Rút phí từ mint về wallet
-Đã rút phí về ví FeeRecipientTokenAccountHere123456789
+5. Withdrawing fees from mint to wallet
+Fees withdrawn to FeeRecipientTokenAccountHere123456789
 Transaction: https://explorer.solana.com/tx/WithdrawTransactionSignatureHere123456789?cluster=devnet
 
-===== TỔNG KẾT =====
+===== SUMMARY =====
 - Token Address: TokenAddressHere123456789
 - Owner Token Account: TokenAccountAddressHere123456789
 - Recipient Token Account: RecipientTokenAccountHere123456789
-- Fee Recipient Token Account: FeeRecipientTokenAccountHere123456789
-Xem thông tin chi tiết trên Solana Explorer (devnet)
+- View details on Solana Explorer (devnet):
+  https://explorer.solana.com/address/TokenAddressHere123456789?cluster=devnet
 ``` 
