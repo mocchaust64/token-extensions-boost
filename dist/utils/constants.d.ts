@@ -1,0 +1,10 @@
+import { PublicKey } from '@solana/web3.js';
+export declare const TOKEN_2022_PROGRAM_ID: PublicKey;
+export declare const CONFIDENTIAL_TRANSFER_PROGRAM_ID: PublicKey;
+export declare const TRANSFER_FEE_PROGRAM_ID: PublicKey;
+export declare const TRANSFER_HOOK_PROGRAM_ID: PublicKey;
+export declare const INTEREST_BEARING_PROGRAM_ID: PublicKey;
+export declare const METADATA_PROGRAM_ID: PublicKey;
+export declare const BASIS_POINTS_DIVISOR = 10000;
+export declare const MAX_FEE_BASIS_POINTS = 10000;
+export declare const MAX_INTEREST_RATE = 10000;
