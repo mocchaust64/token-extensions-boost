@@ -36,4 +36,4 @@ Upcoming Token Extensions planned for development and integration into the SDK:
 ## Installation
 
 ```bash
-npm install solana-token-extension-sdk
+npm install solana-token-extension-boost

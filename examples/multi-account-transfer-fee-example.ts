@@ -1,8 +1,8 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { TransferFeeToken } from "../src/extensions/transfer-fee";
+import { TransferFeeToken } from "solana-token-extension-boost";
 import * as fs from "fs";
 import * as path from "path";
-import { getOrCreateAssociatedTokenAccount, Account } from "@solana/spl-token";
+import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 
 async function main() {
   const connection = new Connection("https://api.devnet.solana.com", "confirmed");

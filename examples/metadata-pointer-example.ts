@@ -96,17 +96,17 @@ async function main() {
       newAuthority.publicKey
     );
     console.log(`Updated metadata authority, transaction: ${updateAuthorityTxSignature}`);
-
+    
     const metadataAfterAuthorityUpdate = await token.getTokenMetadata();
     console.log("Metadata after authority update:", metadataAfterAuthorityUpdate);
-
+    
     console.log("Airdropping SOL to new authority...");
     const airdropSignature = await connection.requestAirdrop(
       newAuthority.publicKey,
       1 * 10 ** 9 
     );
     await connection.confirmTransaction(airdropSignature);
-
+    
     console.log("Step 11: Testing update with new authority");
     const updateWithNewAuthTxSignature = await token.updateMetadataField(
       newAuthority,

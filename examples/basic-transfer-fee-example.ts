@@ -1,5 +1,5 @@
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { TransferFeeToken } from "../src/extensions/transfer-fee";
+import { Connection, Keypair } from "@solana/web3.js";
+import { TransferFeeToken } from "solana-token-extension-boost";
 import * as fs from "fs";
 import * as path from "path";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";

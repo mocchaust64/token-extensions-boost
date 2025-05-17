@@ -1,5 +1,5 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { ConfidentialTransferToken } from "../src/extensions/confidential-transfer";
+import { ConfidentialTransferToken } from "solana-token-extension-boost";
 import * as fs from "fs";
 import * as path from "path";
 import { getAssociatedTokenAddress } from "@solana/spl-token";

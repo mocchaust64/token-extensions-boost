@@ -12,9 +12,16 @@ class MetadataPointerToken extends token_1.Token {
     }
     static async create(connection, payer, params) {
         const { decimals, mintAuthority, metadata } = params;
-        // Create mint keypair
+        if (!metadata.name || metadata.name.length > 32) {
+            throw new Error("Metadata name is required and must be 32 characters or less");
+        }
+        if (!metadata.symbol || metadata.symbol.length > 10) {
+            throw new Error("Metadata symbol is required and must be 10 characters or less");
+        }
+        if (!metadata.uri || metadata.uri.length > 200) {
+            throw new Error("Metadata URI is required and must be 200 characters or less");
+        }
         const mintKeypair = web3_js_1.Keypair.generate();
-        // Format metadata for on-chain storage
         const tokenMetadata = {
             mint: mintKeypair.publicKey,
             name: metadata.name,
@@ -22,24 +29,16 @@ class MetadataPointerToken extends token_1.Token {
             uri: metadata.uri,
             additionalMetadata: Object.entries(metadata.additionalMetadata || {}).map(([key, value]) => [key, value]),
         };
-        // Calculate sizes and rent
         const mintLen = (0, spl_token_1.getMintLen)([spl_token_1.ExtensionType.MetadataPointer]);
         const metadataLen = spl_token_1.TYPE_SIZE + spl_token_1.LENGTH_SIZE + (0, spl_token_metadata_1.pack)(tokenMetadata).length;
         const lamports = await connection.getMinimumBalanceForRentExemption(mintLen + metadataLen);
-        // Create mint account
         const transaction = new web3_js_1.Transaction().add(web3_js_1.SystemProgram.createAccount({
             fromPubkey: payer.publicKey,
             newAccountPubkey: mintKeypair.publicKey,
             space: mintLen,
             lamports,
             programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
-        }), 
-        // Initialize metadata pointer to point to the mint itself
-        (0, spl_token_1.createInitializeMetadataPointerInstruction)(mintKeypair.publicKey, payer.publicKey, mintKeypair.publicKey, spl_token_1.TOKEN_2022_PROGRAM_ID), 
-        // Initialize mint
-        (0, spl_token_1.createInitializeMintInstruction)(mintKeypair.publicKey, decimals, mintAuthority, null, spl_token_1.TOKEN_2022_PROGRAM_ID), 
-        // Initialize metadata
-        (0, spl_token_metadata_1.createInitializeInstruction)({
+        }), (0, spl_token_1.createInitializeMetadataPointerInstruction)(mintKeypair.publicKey, payer.publicKey, mintKeypair.publicKey, spl_token_1.TOKEN_2022_PROGRAM_ID), (0, spl_token_1.createInitializeMintInstruction)(mintKeypair.publicKey, decimals, mintAuthority, null, spl_token_1.TOKEN_2022_PROGRAM_ID), (0, spl_token_metadata_1.createInitializeInstruction)({
             programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
             metadata: mintKeypair.publicKey,
             updateAuthority: payer.publicKey,
@@ -49,9 +48,11 @@ class MetadataPointerToken extends token_1.Token {
             symbol: metadata.symbol,
             uri: metadata.uri,
         }));
-        // Add instructions for additional metadata fields if any
         if (metadata.additionalMetadata) {
             for (const [key, value] of Object.entries(metadata.additionalMetadata)) {
+                if (key.length === 0 || value.length === 0) {
+                    continue;
+                }
                 transaction.add((0, spl_token_metadata_1.createUpdateFieldInstruction)({
                     programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
                     metadata: mintKeypair.publicKey,
@@ -93,66 +94,43 @@ class MetadataPointerToken extends token_1.Token {
         }
     }
     async getMetadataPointer() {
-        const mintInfo = await (0, spl_token_1.getMint)(this.connection, this.mint, "confirmed", spl_token_1.TOKEN_2022_PROGRAM_ID);
-        return (0, spl_token_1.getMetadataPointerState)(mintInfo);
+        try {
+            const mintInfo = await (0, spl_token_1.getMint)(this.connection, this.mint, "confirmed", spl_token_1.TOKEN_2022_PROGRAM_ID);
+            const pointerState = (0, spl_token_1.getMetadataPointerState)(mintInfo);
+            if (!pointerState || !pointerState.authority || !pointerState.metadataAddress) {
+                return null;
+            }
+            return {
+                authority: pointerState.authority,
+                metadataAddress: pointerState.metadataAddress
+            };
+        }
+        catch (error) {
+            throw new Error(`Failed to get metadata pointer: ${error}`);
+        }
     }
     async getTokenMetadata() {
-        return await (0, spl_token_1.getTokenMetadata)(this.connection, this.mint, "confirmed", spl_token_1.TOKEN_2022_PROGRAM_ID);
+        const metadata = await (0, spl_token_1.getTokenMetadata)(this.connection, this.mint, "confirmed", spl_token_1.TOKEN_2022_PROGRAM_ID);
+        if (!metadata) {
+            throw new Error("No metadata found for this token");
+        }
+        return metadata;
     }
     async updateMetadataField(authority, field, value) {
-        const additionalRent = await this.connection.getMinimumBalanceForRentExemption(1024);
-        const transaction = new web3_js_1.Transaction();
-        transaction.add(web3_js_1.SystemProgram.transfer({
-            fromPubkey: authority.publicKey,
-            toPubkey: this.mint,
-            lamports: additionalRent,
-        }));
-        // Thêm hướng dẫn cập nhật trường
-        transaction.add((0, spl_token_metadata_1.createUpdateFieldInstruction)({
-            programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
-            metadata: this.mint,
-            updateAuthority: authority.publicKey,
-            field: field,
-            value: value,
-        }));
-        return await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
-            authority,
-        ]);
-    }
-    async removeMetadataField(authority, key) {
-        // Tạo transaction
-        const transaction = new web3_js_1.Transaction();
-        // Thêm hướng dẫn xóa trường
-        transaction.add((0, spl_token_metadata_1.createRemoveKeyInstruction)({
-            programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
-            metadata: this.mint,
-            updateAuthority: authority.publicKey,
-            key: key,
-            idempotent: true,
-        }));
-        return await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
-            authority,
-        ]);
-    }
-    async updateMetadataPointer(authority, newMetadataAddress) {
-        const transaction = new web3_js_1.Transaction().add((0, spl_token_1.createUpdateMetadataPointerInstruction)(this.mint, authority.publicKey, newMetadataAddress, [], spl_token_1.TOKEN_2022_PROGRAM_ID));
-        return await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
-            authority,
-        ]);
-    }
-    async updateMetadataBatch(authority, fields) {
-        // Ước tính lượng rent cần thiết cho việc mở rộng dữ liệu
-        const additionalRent = await this.connection.getMinimumBalanceForRentExemption(1024 * Object.keys(fields).length // Dự phòng không gian cho metadata
-        );
-        const transaction = new web3_js_1.Transaction();
-        // Thêm hướng dẫn chuyển SOL để chi trả cho việc mở rộng tài khoản
-        transaction.add(web3_js_1.SystemProgram.transfer({
-            fromPubkey: authority.publicKey,
-            toPubkey: this.mint,
-            lamports: additionalRent,
-        }));
-        // Thêm hướng dẫn cập nhật trường cho mỗi cặp key-value
-        for (const [field, value] of Object.entries(fields)) {
+        if (!field || field.length === 0) {
+            throw new Error("Field name cannot be empty");
+        }
+        if (value.length === 0) {
+            throw new Error("Field value cannot be empty");
+        }
+        try {
+            const additionalRent = await this.connection.getMinimumBalanceForRentExemption(spl_token_1.LENGTH_SIZE + field.length + value.length);
+            const transaction = new web3_js_1.Transaction();
+            transaction.add(web3_js_1.SystemProgram.transfer({
+                fromPubkey: authority.publicKey,
+                toPubkey: this.mint,
+                lamports: additionalRent,
+            }));
             transaction.add((0, spl_token_metadata_1.createUpdateFieldInstruction)({
                 programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
                 metadata: this.mint,
@@ -160,14 +138,100 @@ class MetadataPointerToken extends token_1.Token {
                 field: field,
                 value: value,
             }));
+            const signature = await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
+                authority,
+            ]);
+            const updatedMetadata = await this.getTokenMetadata();
+            return {
+                signature,
+                metadata: updatedMetadata
+            };
         }
-        return await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
-            authority,
-        ]);
+        catch (error) {
+            throw new Error(`Failed to update metadata field: ${error}`);
+        }
+    }
+    async removeMetadataField(authority, key) {
+        if (!key || key.length === 0) {
+            throw new Error("Field key cannot be empty");
+        }
+        try {
+            const transaction = new web3_js_1.Transaction();
+            transaction.add((0, spl_token_metadata_1.createRemoveKeyInstruction)({
+                programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
+                metadata: this.mint,
+                updateAuthority: authority.publicKey,
+                key: key,
+                idempotent: true,
+            }));
+            const signature = await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
+                authority,
+            ]);
+            const updatedMetadata = await this.getTokenMetadata();
+            return {
+                signature,
+                metadata: updatedMetadata
+            };
+        }
+        catch (error) {
+            throw new Error(`Failed to remove metadata field: ${error}`);
+        }
+    }
+    async updateMetadataPointer(authority, newMetadataAddress) {
+        try {
+            const transaction = new web3_js_1.Transaction().add((0, spl_token_1.createUpdateMetadataPointerInstruction)(this.mint, authority.publicKey, newMetadataAddress, [], spl_token_1.TOKEN_2022_PROGRAM_ID));
+            return await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
+                authority,
+            ]);
+        }
+        catch (error) {
+            throw new Error(`Failed to update metadata pointer: ${error}`);
+        }
+    }
+    async updateMetadataBatch(authority, fields) {
+        if (Object.keys(fields).length === 0) {
+            throw new Error("No fields provided for update");
+        }
+        try {
+            let totalSize = 0;
+            for (const [field, value] of Object.entries(fields)) {
+                totalSize += spl_token_1.LENGTH_SIZE + field.length + value.length;
+            }
+            const additionalRent = await this.connection.getMinimumBalanceForRentExemption(totalSize);
+            const transaction = new web3_js_1.Transaction();
+            transaction.add(web3_js_1.SystemProgram.transfer({
+                fromPubkey: authority.publicKey,
+                toPubkey: this.mint,
+                lamports: additionalRent,
+            }));
+            for (const [field, value] of Object.entries(fields)) {
+                if (field.length === 0 || value.length === 0) {
+                    continue;
+                }
+                transaction.add((0, spl_token_metadata_1.createUpdateFieldInstruction)({
+                    programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
+                    metadata: this.mint,
+                    updateAuthority: authority.publicKey,
+                    field: field,
+                    value: value,
+                }));
+            }
+            const signature = await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
+                authority,
+            ]);
+            const updatedMetadata = await this.getTokenMetadata();
+            return {
+                signature,
+                metadata: updatedMetadata
+            };
+        }
+        catch (error) {
+            throw new Error(`Failed to update metadata batch: ${error}`);
+        }
     }
     async getNFTMetadata() {
         const tokenMetadata = await this.getTokenMetadata();
-        if (!tokenMetadata || !tokenMetadata.uri) {
+        if (!tokenMetadata.uri) {
             throw new Error("No metadata URI found for this token");
         }
         try {
@@ -178,23 +242,66 @@ class MetadataPointerToken extends token_1.Token {
             return await response.json();
         }
         catch (error) {
-            console.error("Error fetching off-chain metadata:", error);
-            throw error;
+            throw new Error(`Error fetching off-chain metadata: ${error}`);
         }
     }
     getMetadataConfig() {
-        return this.metadata;
+        return { ...this.metadata };
     }
     async updateMetadataAuthority(currentAuthority, newAuthority) {
-        const transaction = new web3_js_1.Transaction().add((0, spl_token_metadata_1.createUpdateAuthorityInstruction)({
-            programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
-            metadata: this.mint,
-            oldAuthority: currentAuthority.publicKey,
-            newAuthority: newAuthority,
-        }));
-        return await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
-            currentAuthority,
-        ]);
+        try {
+            const transaction = new web3_js_1.Transaction().add((0, spl_token_metadata_1.createUpdateAuthorityInstruction)({
+                programId: spl_token_1.TOKEN_2022_PROGRAM_ID,
+                metadata: this.mint,
+                oldAuthority: currentAuthority.publicKey,
+                newAuthority: newAuthority,
+            }));
+            return await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [
+                currentAuthority,
+            ]);
+        }
+        catch (error) {
+            throw new Error(`Failed to update metadata authority: ${error}`);
+        }
+    }
+    async getMetadataField(field) {
+        try {
+            const metadata = await this.getTokenMetadata();
+            if (!metadata.additionalMetadata) {
+                return null;
+            }
+            for (const [key, value] of metadata.additionalMetadata) {
+                if (key === field) {
+                    return value;
+                }
+            }
+            return null;
+        }
+        catch (error) {
+            throw new Error(`Failed to get metadata field: ${error}`);
+        }
+    }
+    async updateBasicMetadata(authority, updates) {
+        const fields = {};
+        if (updates.name) {
+            if (updates.name.length > 32) {
+                throw new Error("Name must be 32 characters or less");
+            }
+            fields["name"] = updates.name;
+        }
+        if (updates.symbol) {
+            if (updates.symbol.length > 10) {
+                throw new Error("Symbol must be 10 characters or less");
+            }
+            fields["symbol"] = updates.symbol;
+        }
+        if (updates.uri) {
+            if (updates.uri.length > 200) {
+                throw new Error("URI must be 200 characters or less");
+            }
+            fields["uri"] = updates.uri;
+        }
+        return await this.updateMetadataBatch(authority, fields);
     }
 }
 exports.MetadataPointerToken = MetadataPointerToken;

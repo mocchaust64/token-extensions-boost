@@ -1,11 +1,9 @@
-import { Connection, Keypair, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction } from "@solana/web3.js";
-import { TransferFeeToken } from "../src/extensions/transfer-fee";
-import { MetadataPointerToken } from "../src/extensions/metadata-pointer";
+import { Connection, Keypair, Transaction, SystemProgram, sendAndConfirmTransaction } from "@solana/web3.js";
+import { TransferFeeToken,MetadataPointerToken } from "solana-token-extension-boost";
+
 import * as fs from "fs";
 import * as path from "path";
 import { 
-  getOrCreateAssociatedTokenAccount, 
-  Account, 
   TOKEN_2022_PROGRAM_ID,
   ExtensionType,
   getMintLen,

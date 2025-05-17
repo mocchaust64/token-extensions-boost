@@ -1,17 +1,39 @@
 {
-  "name": "solana-token-extension-sdk",
-  "version": "1.0.0",
+  "name": "solana-token-extension-boost",
+  "version": "1.0.5",
   "description": "SDK for Solana Token Extensions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepare": "npm run build",
     "test": "jest",
     "test:watch": "jest --watch"
   },
+  "keywords": [
+    "solana",
+    "token",
+    "extension",
+    "sdk",
+    "blockchain",
+    "web3"
+  ],
+  "author": "Token Extension Boost",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mocchaust64/token-extensions-boost.git"
+  },
   "dependencies": {
     "@solana/spl-token": "^0.3.9",
-    "@solana/web3.js": "^1.87.6"
+    "@solana/spl-token-metadata": "^0.1.2",
+    "@solana/web3.js": "^1.87.6",
+    "solana-token-extension-boost": "^1.0.4"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",
