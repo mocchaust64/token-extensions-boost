@@ -29,12 +29,10 @@ async function main() {
       // Load keypair từ file
       const keyfileContent = JSON.parse(fs.readFileSync(keyfilePath, 'utf-8'));
       payer = Keypair.fromSecretKey(new Uint8Array(keyfileContent));
-      console.log('Loaded keypair from', keyfilePath);
     } else {
       // Tạo keypair mới
       payer = Keypair.generate();
       fs.writeFileSync(keyfilePath, JSON.stringify(Array.from(payer.secretKey)));
-      console.log('Generated new keypair and saved to', keyfilePath);
       
       // Request airdrop
       console.log('Requesting airdrop of 1 SOL...');
@@ -73,7 +71,7 @@ async function main() {
       TOKEN_2022_PROGRAM_ID
     );
     
-    console.log('Token created with mint address:', mint.toBase58());
+    console.log(`Token created with mint address: ${mint.toBase58()}`);
     
     // ============== Tạo token account thông thường ==============
     console.log('\n2. Tạo token account thông thường...');
@@ -81,7 +79,7 @@ async function main() {
     const tokenAccount = new TokenAccount(connection, mint, payer.publicKey);
     const { tokenAccount: standardAccount, signature } = await tokenAccount.createAccount(payer);
     
-    console.log('Standard token account created:', standardAccount.toBase58());
+    console.log(`Standard token account created: ${standardAccount.toBase58()}`);
     console.log('Transaction signature:', signature);
     
     // Mint tokens đến account
@@ -115,9 +113,9 @@ async function main() {
         { commitment: 'confirmed' },
         TOKEN_2022_PROGRAM_ID
       );
-      console.log('Owner changed successfully to:', newOwner.toBase58());
+      console.log(`Standard account owner changed successfully to: ${newOwner.toBase58()}`);
     } catch (error) {
-      console.log('Error changing owner: Token Account Owner change is not restricted');
+      console.log('Error changing standard account owner');
     }
     
     // ============== Tạo token account với ImmutableOwner ==============
@@ -126,7 +124,7 @@ async function main() {
     const { tokenAccount: immutableAccount, signature: immutableSig } = 
       await tokenAccount.createAccountWithImmutableOwner(payer);
     
-    console.log('Token account with ImmutableOwner created:', immutableAccount.toBase58());
+    console.log(`Immutable owner token account created: ${immutableAccount.toBase58()}`);
     console.log('Transaction signature:', immutableSig);
     
     // Mint tokens đến immutable account
@@ -160,9 +158,9 @@ async function main() {
         { commitment: 'confirmed' },
         TOKEN_2022_PROGRAM_ID
       );
-      console.log('Owner changed successfully - Lỗi, không nên thay đổi được');
+      console.log('Immutable account owner changed - unexpected');
     } catch (error) {
-      console.log('Owner change rejected as expected: Owner immutable');
+      console.log('Immutable account owner change rejected as expected');
     }
     
     // ============== Tạo Associated Token Account ==============
@@ -171,7 +169,7 @@ async function main() {
     const { tokenAccount: associatedAccount, signature: ataSig } = 
       await tokenAccount.createAssociatedTokenAccount(payer);
     
-    console.log('Associated Token Account created:', associatedAccount.toBase58());
+    console.log(`Associated Token Account created: ${associatedAccount.toBase58()}`);
     console.log('Transaction signature:', ataSig);
     
     // Mint tokens đến ATA
@@ -205,9 +203,9 @@ async function main() {
         { commitment: 'confirmed' },
         TOKEN_2022_PROGRAM_ID
       );
-      console.log('Owner changed successfully - Lỗi, không nên thay đổi được');
+      console.log('ATA owner changed - unexpected');
     } catch (error) {
-      console.log('Owner change rejected as expected: Owner immutable');
+      console.log('ATA owner change rejected as expected');
     }
     
     console.log('\nVí dụ hoàn thành thành công!');

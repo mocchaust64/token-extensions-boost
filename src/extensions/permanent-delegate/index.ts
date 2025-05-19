@@ -186,7 +186,7 @@ export class PermanentDelegateToken extends Token {
         [delegateKeypair]
       );
     } catch (error: any) {
-      throw new Error(`Could not transfer tokens as delegate: ${error.message}`);
+      throw new Error(`Could not transfer tokens as delegate: ${error.message || String(error)}`);
     }
   }
 
@@ -199,11 +199,18 @@ export class PermanentDelegateToken extends Token {
   async isPermanentDelegate(address: PublicKey): Promise<boolean> {
     try {
       const mintInfo = await getMint(this.connection, this.mint, "recent", TOKEN_2022_PROGRAM_ID);
-      return mintInfo.permanentDelegate !== null && 
-             mintInfo.permanentDelegate !== undefined && 
-             mintInfo.permanentDelegate.equals(address);
+      
+      // Kiểm tra xem permanentDelegate có tồn tại không
+      if (!mintInfo.permanentDelegate) {
+        console.log("Permanent delegate không tồn tại cho token này");
+        return false;
+      }
+      
+      return mintInfo.permanentDelegate.equals(address);
     } catch (error: any) {
-      throw new Error(`Could not check if address is permanent delegate: ${error.message}`);
+      console.error(`Lỗi khi kiểm tra permanent delegate: ${error.message || String(error)}`);
+      // Trả về false thay vì throw error để đảm bảo mã không bị gián đoạn
+      return false;
     }
   }
 
@@ -217,7 +224,9 @@ export class PermanentDelegateToken extends Token {
       const mintInfo = await getMint(this.connection, this.mint, "recent", TOKEN_2022_PROGRAM_ID);
       return mintInfo.permanentDelegate || null;
     } catch (error: any) {
-      throw new Error(`Could not get permanent delegate: ${error.message}`);
+      console.error(`Lỗi khi lấy permanent delegate: ${error.message || String(error)}`);
+      // Trả về null thay vì throw error để đảm bảo mã không bị gián đoạn
+      return null;
     }
   }
 

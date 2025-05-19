@@ -1,110 +1,99 @@
 # Transfer Hook Extension
 
-Transfer Hook là một extension mạnh mẽ của SPL-Token 2022, cho phép thực thi một đoạn code tùy chỉnh mỗi khi token được chuyển. Extension này mở ra rất nhiều khả năng như:
+Transfer Hook is a powerful extension of SPL-Token 2022 that allows you to execute custom code every time a token is transferred. This extension opens up many possibilities such as:
 
-- Thực thi xác thực quyền sở hữu hoặc kiểm tra whitelist/blacklist
-- Thu phí tự động bằng các token khác
-- Thực thi royalty NFT
-- Tích lũy dữ liệu chuyển token
-- Tạo event khi chuyển token
-- Nhiều use case khác...
+- Enforcing ownership validation or whitelist/blacklist checks
+- Collecting fees automatically in different tokens
+- Enforcing NFT royalties
+- Accumulating token transfer data
+- Creating events when tokens are transferred
+- Many other use cases...
 
-## Cách hoạt động
+## How It Works
 
-1. Tạo một Token với Extension Transfer Hook, chỉ định địa chỉ của một chương trình Transfer Hook
-2. Khi một người dùng chuyển token, chương trình Token 2022 sẽ gọi CPI (Cross-Program Invocation) đến chương trình Transfer Hook đã chỉ định
-3. Chương trình Transfer Hook có thể:
-   - Thực hiện các hành động phụ
-   - Lưu trữ dữ liệu
-   - Kiểm tra các điều kiện
-   - Từ chối giao dịch nếu các điều kiện không đáp ứng
+1. Create a Token with the Transfer Hook Extension, specifying the address of a Transfer Hook program
+2. When a user transfers the token, the Token 2022 program will make a CPI (Cross-Program Invocation) to the specified Transfer Hook program
+3. The Transfer Hook program can:
+   - Perform side actions
+   - Store data
+   - Check conditions
+   - Reject the transaction if conditions are not met
 
-## Hướng dẫn sử dụng
+## Usage Guide
 
-### 1. Tạo một token với Transfer Hook
+### 1. Creating a token with Transfer Hook
 
 ```typescript
-// Tạo Transfer Hook Program thực tế và deploy nó
+// Create an actual Transfer Hook Program and deploy it
 const transferHookProgramId = new PublicKey("YOUR_HOOK_PROGRAM_ID");
 
-// Khởi tạo Token2022Factory
-const factory = new Token2022Factory(connection);
+// Initialize TokenBuilder
+const tokenBuilder = new TokenBuilder(connection);
 
-// Tạo token với Transfer Hook
-const transferHookToken = await factory.createTransferHookToken(
-  payer,
-  {
-    decimals: 9,
-    mintAuthority: payer.publicKey,
-    transferHookProgramId: transferHookProgramId,
-    freezeAuthority: null
-  }
-);
+// Create token with Transfer Hook
+const { mint, token } = await tokenBuilder
+  .setTokenInfo(9, payer.publicKey)
+  .addTransferHook(transferHookProgramId)
+  .createToken(payer);
 ```
 
-### 2. Chuyển token với Transfer Hook
+### 2. Transferring tokens with Transfer Hook
 
 ```typescript
-// Tạo token account cho người nhận
+// Create token account for the recipient
 const { address: recipientTokenAccount } = await transferHookToken.createOrGetTokenAccount(
   payer,
   recipient.publicKey
 );
 
-// Chuyển token
+// Transfer tokens
 const transferSignature = await transferHookToken.transfer(
   ownerTokenAccount,
   recipientTokenAccount,
   payer,
   transferAmount,
   decimals,
-  extraAccounts // Tùy chọn: Các tài khoản bổ sung cho transfer hook
+  extraAccounts // Optional: Additional accounts for the transfer hook
 );
 ```
 
-### 3. Kết hợp Transfer Hook với các extension khác
+### 3. Combining Transfer Hook with other extensions
 
-Bạn có thể kết hợp Transfer Hook với các extension khác như Metadata:
+You can combine Transfer Hook with other extensions like Metadata:
 
 ```typescript
-const { transferHookToken, metadataToken, mint } = await factory.createTransferHookWithMetadataToken(
-  payer,
-  {
-    decimals: 9,
-    mintAuthority: payer.publicKey,
-    transferHook: {
-      programId: transferHookProgramId
-    },
-    metadata: {
-      name: "Hook Token",
-      symbol: "HOOK",
-      uri: "https://example.com/metadata/hook-token.json",
-      additionalMetadata: {
-        "description": "A token with transfer hook and metadata"
-      }
+const { mint } = await tokenBuilder
+  .setTokenInfo(9, payer.publicKey)
+  .addTransferHook(transferHookProgramId)
+  .addTokenMetadata(
+    "Hook Token",
+    "HOOK",
+    "https://example.com/metadata/hook-token.json",
+    {
+      "description": "A token with transfer hook and metadata"
     }
-  }
-);
+  )
+  .createToken(payer);
 ```
 
-## Thực hiện Transfer Hook Program
+## Implementing a Transfer Hook Program
 
-Để sử dụng đầy đủ tính năng Transfer Hook, bạn cần:
+To fully use the Transfer Hook feature, you need to:
 
-1. **Xây dựng và triển khai một Transfer Hook Program** thực hiện Interface SPL Transfer Hook
-2. **Tạo một ExtraAccountMetaList PDA** để lưu trữ các tài khoản bổ sung cần thiết cho Transfer Hook
-3. **Khởi tạo các tài khoản bổ sung** (nếu cần) cho Transfer Hook Program
+1. **Build and deploy a Transfer Hook Program** that implements the SPL Transfer Hook Interface
+2. **Create an ExtraAccountMetaList PDA** to store additional accounts required for the Transfer Hook
+3. **Initialize any additional accounts** (if needed) for the Transfer Hook Program
 
-Ví dụ về một Transfer Hook Program đơn giản sử dụng Anchor Framework có thể tìm thấy tại:
+A simple example of a Transfer Hook Program using the Anchor Framework can be found at:
 https://github.com/solana-labs/solana-program-library/tree/master/token/transfer-hook/example
 
-## Lưu ý quan trọng
+## Important Notes
 
-- Transfer Hook chỉ có thể thực thi code trong chương trình đã được chỉ định khi tạo token
-- Chương trình Transfer Hook không thể thay đổi sau khi đã tạo token (trừ khi bạn chỉ định quyền thay đổi)
-- Các tài khoản gốc (source, destination) được chuyển vào Transfer Hook dưới dạng read-only, không thể thay đổi
-- Khi sử dụng Transfer Hook với các UI/wallet hiện tại, các trình ký giao dịch cần hỗ trợ giải quyết ExtraAccountMetaList
+- Transfer Hooks can only execute code in the program specified when the token is created
+- The Transfer Hook program cannot be changed after the token is created (unless you specify change authority)
+- The source and destination accounts are passed to the Transfer Hook as read-only and cannot be modified
+- When using Transfer Hooks with existing UIs/wallets, transaction signers need to support resolving the ExtraAccountMetaList
 
-## Ví dụ
+## Examples
 
-Xem ví dụ đầy đủ tại [examples/transfer-hook/index.ts](./index.ts) và [examples/multi-extension-example/transfer-hook-with-fee.ts](../multi-extension-example/transfer-hook-with-fee.ts) 
+See the full examples in [examples/transfer-hook/index.ts](./index.ts) and [examples/multi-extension-example/metadata-with-extensions-example.ts](../multi-extension-example/metadata-with-extensions-example.ts) 

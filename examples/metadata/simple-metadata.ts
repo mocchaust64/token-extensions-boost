@@ -10,127 +10,77 @@ import {
 
 import fs from 'fs';
 import path from 'path';
-import { MetadataHelper } from "../../src/utils/metadata-helper";
+import { TokenBuilder } from "../../src/utils/token-builder";
 
 async function main() {
-  // Kết nối đến Solana devnet
-  console.log("Kết nối đến Solana devnet...");
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
   
-  // Tạo hoặc load keypair
   let payer: Keypair;
   const keyfilePath = path.resolve('devnet-wallet.json');
   
   try {
     if (fs.existsSync(keyfilePath)) {
-      // Load keypair từ file
       const keyfileContent = JSON.parse(fs.readFileSync(keyfilePath, 'utf-8'));
       payer = Keypair.fromSecretKey(new Uint8Array(keyfileContent));
-      console.log('Loaded keypair from', keyfilePath);
     } else {
-      // Tạo keypair mới
       payer = Keypair.generate();
       fs.writeFileSync(keyfilePath, JSON.stringify(Array.from(payer.secretKey)));
-      console.log('Generated new keypair and saved to', keyfilePath);
       
-      // Request airdrop
-      console.log('Requesting airdrop of 1 SOL...');
       const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
       await connection.confirmTransaction(airdropSignature, 'confirmed');
-      console.log('Airdrop confirmed!');
     }
     
-    console.log('Using address:', payer.publicKey.toBase58());
-    
-    // Kiểm tra balance
     const balance = await connection.getBalance(payer.publicKey);
-    console.log('Account balance:', balance / LAMPORTS_PER_SOL, 'SOL');
     
     if (balance < 0.5 * LAMPORTS_PER_SOL) {
-      console.log('Low balance, requesting airdrop...');
       const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
       await connection.confirmTransaction(airdropSignature, 'confirmed');
-      console.log('Airdrop complete!');
     }
 
-    // Tạo token với metadata đơn giản
-    console.log("\n===== Tạo token với metadata tích hợp =====");
-
+    // Create token with simple metadata
     const metadata = {
       name: "Token Metadata Demo",
       symbol: "TMETA",
       uri: "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/DeveloperPortal/metadata.json",
       additionalMetadata: {
-        "description": "Token với metadata tích hợp sử dụng Solana Token Extension",
+        "description": "Token with integrated metadata using Solana Token Extension",
         "creator": "Solana Token Extension SDK",
         "website": "https://solana.com",
       }
     };
-
-    console.log("Đang tạo token với metadata...");
     
-    const startTime = Date.now();
+    // Use TokenBuilder to create token with metadata
+    const tokenBuilder = new TokenBuilder(connection)
+      .setTokenInfo(9, payer.publicKey)
+      .addTokenMetadata(
+        metadata.name,
+        metadata.symbol,
+        metadata.uri,
+        metadata.additionalMetadata
+      );
     
-    // Sử dụng API mới để tạo token với metadata
-    const result = await MetadataHelper.createTokenWithMetadata(
-      connection,
-      payer,
-      {
-        decimals: 9,
-        mintAuthority: payer.publicKey,
-        ...metadata
-      }
-    );
-
-    const endTime = Date.now();
+    const { mint, transactionSignature } = await tokenBuilder.createToken(payer);
     
-    console.log(`Token tạo thành công trong ${(endTime - startTime)/1000} giây!`);
-    console.log(`Mint address: ${result.mint.toString()}`);
-    console.log(`Transaction: https://explorer.solana.com/tx/${result.txId}?cluster=devnet`);
+    console.log(`Token created successfully!`);
+    console.log(`Mint address: ${mint.toString()}`);
+    console.log(`Solana Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
     
-    // Đọc metadata từ token
-    console.log("\n===== Đọc metadata từ token =====");
-    
+    // Read metadata from token
     const tokenMetadata = await getTokenMetadata(
       connection,
-      result.mint,
+      mint,
       "confirmed"
     );
     
-    console.log("Token Metadata:");
-    console.log(`Name: ${tokenMetadata?.name}`);
-    console.log(`Symbol: ${tokenMetadata?.symbol}`);
-    console.log(`URI: ${tokenMetadata?.uri}`);
-    
-    if (tokenMetadata?.additionalMetadata) {
-      console.log("Additional Metadata:");
-      for (const [key, value] of tokenMetadata.additionalMetadata) {
-        console.log(`  ${key}: ${value}`);
-      }
-    }
-    
-    // Thử lấy metadata off-chain
-    if (tokenMetadata?.uri) {
-      try {
-        console.log("\n===== Lấy metadata off-chain =====");
-        const response = await fetch(tokenMetadata.uri);
-        const offchainMetadata = await response.json();
-        console.log("Off-chain Metadata:", offchainMetadata);
-      } catch (error) {
-        console.error("Error fetching off-chain metadata:", error);
-      }
-    }
-    
-    console.log("\n===== SUMMARY =====");
-    console.log(`Token: ${result.mint.toString()}`);
-    console.log(`Xem trên Explorer: https://explorer.solana.com/address/${result.mint.toString()}?cluster=devnet`);
+    console.log(`Token name: ${tokenMetadata?.name}`);
+    console.log(`Token symbol: ${tokenMetadata?.symbol}`);
   } catch (error) {
     console.error("Error:", error);
   }
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => console.log("Success"))
   .catch(error => {
     console.error("Error:", error);
     process.exit(1);

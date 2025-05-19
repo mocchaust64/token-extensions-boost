@@ -1,36 +1,36 @@
 # Permanent Delegate Token Extension
 
-Ví dụ này minh họa cách sử dụng `PermanentDelegateToken` từ SDK để tạo và quản lý token với permanent delegate - một entity có thể di chuyển token từ bất kỳ tài khoản nào mà không cần sự đồng ý.
+This example demonstrates how to use `PermanentDelegateToken` from the SDK to create and manage tokens with a permanent delegate - an entity that can move tokens from any account without requiring consent.
 
-## Các tính năng chính
+## Key Features
 
-- Tạo token với permanent delegate
-- Chuyển token từ bất kỳ tài khoản nào mà không cần sự đồng ý của chủ sở hữu
-- Kiểm tra và xác thực quyền permanent delegate
-- Tạo và quản lý tài khoản token
+- Creating tokens with a permanent delegate
+- Transferring tokens from any account without the owner's consent
+- Checking and validating permanent delegate authority
+- Creating and managing token accounts
 
-## Cách chạy ví dụ
+## How to Run the Example
 
 ```bash
-# Cài đặt dependencies
+# Install dependencies
 npm install
 
-# Chạy ví dụ
+# Run the example
 npx ts-node index.ts
 ```
 
-## Giải thích code
+## Code Explanation
 
-File `index.ts` minh họa quy trình cơ bản:
-1. Tạo token với permanent delegate (thường là một quyền hành chính)
-2. Tạo tài khoản token cho người dùng
-3. Chuyển token từ tài khoản người dùng dưới quyền permanent delegate
-4. Kiểm tra thông tin permanent delegate
+The `index.ts` file demonstrates the basic process:
+1. Creating a token with a permanent delegate (typically an administrative authority)
+2. Creating token accounts for users
+3. Transferring tokens from a user's account under permanent delegate authority
+4. Checking permanent delegate information
 
-## Các API chính
+## Key APIs
 
 ```typescript
-// Tạo token mới với permanent delegate
+// Create a new token with a permanent delegate
 const token = await PermanentDelegateToken.create(
   connection,
   payer,
@@ -41,13 +41,13 @@ const token = await PermanentDelegateToken.create(
   }
 );
 
-// Tạo token account
+// Create a token account
 const userTokenAccount = await token.createTokenAccount(
   payer,
   userPublicKey
 );
 
-// Chuyển token bằng quyền permanent delegate
+// Transfer tokens using permanent delegate authority
 const signature = await token.transferAsDelegate(
   delegateKeypair, 
   sourceAccount, 
@@ -55,36 +55,36 @@ const signature = await token.transferAsDelegate(
   amount
 );
 
-// Kiểm tra xem một địa chỉ có phải là permanent delegate hay không
+// Check if an address is the permanent delegate
 const isDelegate = await token.isPermanentDelegate(address);
 
-// Lấy địa chỉ permanent delegate của token
+// Get the permanent delegate address of the token
 const delegate = await token.getPermanentDelegate();
 
-// Tạo hoặc lấy token account hiện có
+// Create or get an existing token account
 const { address, signature } = await token.createOrGetTokenAccount(
   payer,
   ownerPublicKey
 );
 ```
 
-## Trường hợp sử dụng
+## Use Cases
 
-Permanent Delegate rất hữu ích trong các trường hợp sau:
+Permanent Delegate is useful in the following scenarios:
 
-1. **Token giáo dục hoặc tài năng** - Có thể thu hồi nếu người dùng không đáp ứng các yêu cầu
+1. **Educational or credential tokens** - Can be revoked if users do not meet requirements
 
-2. **Token quản trị** - Cho phép can thiệp hành chính khi cần thiết
+2. **Governance tokens** - Allow administrative intervention when necessary
 
-3. **Token tuân thủ quy định** - Cho phép cơ quan quản lý tương tác với token khi cần
+3. **Regulatory compliant tokens** - Allow regulators to interact with tokens when needed
 
-4. **Ứng dụng chống gian lận** - Cho phép thu hồi token từ tài khoản vi phạm
+4. **Anti-fraud applications** - Allow revoking tokens from compromised accounts
 
-## Cân nhắc bảo mật
+## Security Considerations
 
-Permanent Delegate có quyền chuyển token mà không cần sự đồng ý của chủ sở hữu, vì vậy:
+The Permanent Delegate has the authority to transfer tokens without the owner's consent, so:
 
-- Chỉ sử dụng cho các trường hợp thực sự cần thiết
-- Permanent delegate nên được bảo mật và kiểm soát chặt chẽ
-- Người dùng nên được thông báo rõ ràng về sự tồn tại của permanent delegate
-- Trong nhiều trường hợp, nên sử dụng cơ chế đa chữ ký hoặc DAO để kiểm soát quyền permanent delegate 
+- Only use for cases where it's truly necessary
+- The permanent delegate should be secured and tightly controlled
+- Users should be clearly informed about the existence of a permanent delegate
+- In many cases, consider using multi-signature or DAO mechanisms to control permanent delegate authority 

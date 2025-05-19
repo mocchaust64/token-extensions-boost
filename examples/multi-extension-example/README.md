@@ -1,185 +1,135 @@
-# Ví dụ về Token với Nhiều Extension
+# Examples of Tokens with Multiple Extensions
 
-Thư mục này chứa các ví dụ về việc tạo token với nhiều extension cùng một lúc.
+This directory contains examples demonstrating how to create tokens with multiple extensions using the SDK.
 
-## Các ví dụ thành công
+## Available Examples
 
-Những ví dụ dưới đây đã được kiểm tra và hoạt động ổn định:
+1. **Create tokens with multiple extensions (without metadata)**
+   - File: `multiple-extensions-example.ts`
+   - Description: Creates a token with TransferFee, InterestBearing, and PermanentDelegate
+   - Method used: `createToken()`
 
-1. **test-custom-extensions.ts** - Tạo token với nhiều kết hợp extension khác nhau
-   ```bash
-   npx ts-node examples/multi-extension-example/test-custom-extensions.ts
-   ```
-   
-2. **transfer-hook-with-fee.ts** - Tạo token với kết hợp TransferFee + TransferHook
-   ```bash
-   npx ts-node examples/multi-extension-example/transfer-hook-with-fee.ts
-   ```
+2. **Create tokens with metadata and multiple extensions**
+   - File: `metadata-with-extensions-example.ts`
+   - Description: Creates a token with TokenMetadata, TransferFee, and PermanentDelegate
+   - Method used: `createToken()`
 
-3. **test-extension-compatibility.ts** - Kiểm tra tính tương thích giữa các extension
-   ```bash
-   npx ts-node examples/multi-extension-example/test-extension-compatibility.ts
-   ```
+## Best Practices
 
-4. **test-additional-extensions.ts** - Kiểm tra các kết hợp extension phức tạp và nâng cao
-   ```bash
-   npx ts-node examples/multi-extension-example/test-additional-extensions.ts
-   ```
+When combining extensions, follow these rules:
 
-5. **immutable-owner-example/immutable-owner-test.ts** - Kiểm tra ImmutableOwner với các Token Account
-   ```bash
-   npx ts-node examples/immutable-owner-example/immutable-owner-test.ts
-   ```
+1. **Use TokenMetadata instead of MetadataPointer**: When adding metadata with other extensions, use `addTokenMetadata()` instead of `addMetadata()`.
 
-## Bảng tương thích extension
+2. **Check compatibility**: Always check the compatibility of extensions before combining them. The SDK will automatically check and report errors if it detects invalid combinations.
 
-Không phải tất cả các extension đều có thể kết hợp với nhau. Dưới đây là những cặp extension đã được kiểm tra và kết quả:
+3. **Extension order**: The order in which you add extensions to the TokenBuilder is not important - the SDK will automatically arrange them in the optimal order when creating the token.
 
-### Các kết hợp 2 extension
+4. **Decimals**: Consider using 6 decimals instead of 9 to reduce data size and increase compatibility.
 
-| Extension 1 | Extension 2 | Tương thích | Ghi chú |
-|-------------|-------------|:-----------:|---------|
-| NonTransferable | PermanentDelegate | ✅ | Hoạt động tốt |
-| TransferFee | PermanentDelegate | ✅ | Hoạt động tốt |
-| TransferFee | TransferHook | ✅ | Hoạt động tốt |
-| PermanentDelegate | TransferHook | ✅ | Hoạt động tốt |
-| NonTransferable | TransferFee | ❌ | Không tương thích về mặt logic |
-| NonTransferable | TransferHook | ❌ | Không tương thích về mặt logic |
-| NonTransferable | ConfidentialTransfer | ❌ | Không tương thích về mặt logic |
-| ConfidentialTransfer | TransferFee | ❌ | Không tương thích về mặt logic |
-| ConfidentialTransfer | TransferHook | ❌ | Không tương thích về mặt logic |
-| ConfidentialTransfer | PermanentDelegate | ❌ | Không tương thích về mặt logic |
+## Usage
 
-### Các kết hợp 3 extension trở lên
-
-| Extension 1 | Extension 2 | Extension 3 | Tương thích | Ghi chú |
-|-------------|-------------|-------------|:-----------:|---------|
-| TransferFee | TransferHook | PermanentDelegate | ✅ | Hoạt động tốt |
-| TransferFee | NonTransferable | PermanentDelegate | ❌ | Không tương thích (NonTransferable + TransferFee) |
-
-### Các extension đơn lẻ
-
-| Extension | Hoạt động | Áp dụng cho | Ghi chú |
-|-----------|:---------:|:-----------:|---------|
-| TransferFee | ✅ | Mint | Hoạt động tốt |
-| TransferHook | ✅ | Mint | Hoạt động tốt |
-| PermanentDelegate | ✅ | Mint | Hoạt động tốt |
-| NonTransferable | ✅ | Mint | Hoạt động tốt |
-| ConfidentialTransfer | ❌ | Mint | Gặp vấn đề "invalid account data" |
-| Metadata | ❌ | Mint | Gặp vấn đề với "InvalidAccountData", cần điều tra thêm |
-| ImmutableOwner | ✅ | Token Account | ImmutableOwner là extension cho Token Account, không phải Mint |
-| MetadataPointer | ❌ | Mint | Lỗi "invalid account data", cần sửa thứ tự khởi tạo |
-
-## Vấn đề phát hiện và khắc phục
-
-1. **ImmutableOwner Extension**: 
-   - **Vấn đề**: Đã áp dụng sai cho Mint Account thay vì Token Account
-   - **Cách khắc phục**: Tạo lớp `TokenAccountBuilder` tạo và cấu hình Token Account với ImmutableOwner
-   - **Ví dụ**: Xem `examples/immutable-owner-example/immutable-owner-test.ts`
-
-2. **MetadataPointer Extension**: 
-   - **Vấn đề**: Thứ tự khởi tạo không đúng
-   - **Cách khắc phục**: Cập nhật `MetadataHelper` để đảm bảo đúng thứ tự khởi tạo
-
-3. **ConfidentialTransfer Extension**: 
-   - **Vấn đề**: Chưa có triển khai đầy đủ cho instruction
-   - **Cách khắc phục**: Cần triển khai đầy đủ các instruction cho ConfidentialTransfer
-
-## Các extension chưa được kiểm tra đầy đủ
-
-- DefaultAccountState
-- InterestBearingMint
-- MemoTransfer
-- CpiGuard
-- MintCloseAuthority
-- GroupPointer
-
-## Triển khai mới cho Token Extensions
-
-Chúng tôi đã giới thiệu những cải tiến mới trong SDK:
-
-### 1. TokenBuilder - Builder Pattern cho Mint
-
-Sử dụng builder pattern để dễ dàng tạo token với nhiều extension:
+### 1. Create a token with multiple extensions (without metadata)
 
 ```typescript
-// Tạo TokenBuilder
-const builder = new TokenBuilder(connection)
-  .setTokenInfo(9, payer.publicKey)
-  .addTransferFee(100, BigInt(1_000_000_000), feeAuthority, withdrawAuthority)
-  .addTransferHook(programId)
-  .addPermanentDelegate(delegatePublicKey);
+// Create TokenBuilder with multiple extensions
+const tokenBuilder = new TokenBuilder(connection)
+  .setTokenInfo(
+    6, // decimals
+    payer.publicKey, // mint authority
+    null // freeze authority
+  )
+  // Add TransferFee
+  .addTransferFee(
+    100, // 1% fee (basis points)
+    BigInt(1000000), // max fee (with 6 decimals)
+    payer.publicKey, // config authority
+    payer.publicKey // withdraw authority
+  )
+  // Add InterestBearing
+  .addInterestBearing(
+    500, // 5% interest rate (basis points)
+    payer.publicKey // rate authority
+  )
+  // Add PermanentDelegate
+  .addPermanentDelegate(delegateKeypair.publicKey);
 
-// Xây dựng token
-const { mint, transactionSignature, token } = await builder.build(payer);
+// Create token with configured extensions
+const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);
 ```
 
-### 2. TokenAccountBuilder - Builder Pattern cho Token Account
-
-Sử dụng builder pattern để tạo Token Account với các extension như ImmutableOwner:
+### 2. Create a token with metadata and multiple extensions
 
 ```typescript
-// Tạo TokenAccountBuilder
-const builder = new TokenAccountBuilder(connection, mint, owner.publicKey)
-  .addImmutableOwner();
-
-// Tạo Token Account thông thường
-const { tokenAccount, transactionSignature } = await builder.buildStandardAccount(payer);
-
-// Hoặc tạo Associated Token Account (đã có sẵn ImmutableOwner)
-const { tokenAccount: ata, transactionSignature: ataTxSig } = 
-  await builder.buildAssociatedAccount(payer);
-```
-
-### 3. Phương thức Token2022Factory.createToken()
-
-```typescript
-const factory = new Token2022Factory(connection);
-const result = await factory.createToken(
-  payer,
-  {
-    decimals: 9,
-    mintAuthority: payer.publicKey,
-    extensions: {
-      transferFee: {
-        feeBasisPoints: 100, // 1%
-        maxFee: BigInt(1_000_000_000),
-        transferFeeConfigAuthority: authority.publicKey,
-        withdrawWithheldAuthority: authority.publicKey
-      },
-      transferHook: {
-        programId: programId
-      },
-      permanentDelegate: delegate.publicKey
+// Create TokenBuilder and add extensions
+const tokenBuilder = new TokenBuilder(connection)
+  .setTokenInfo(
+    6, // decimals
+    payer.publicKey, // mint authority
+    null // freeze authority
+  )
+  // Add TokenMetadata - NOTE: Use addTokenMetadata, NOT addMetadata
+  .addTokenMetadata(
+    "Multi Extension Token",
+    "MEXT",
+    "https://example.com/metadata.json",
+    { 
+      "description": "Token with metadata and extensions",
+      "website": "https://solana.com" 
     }
-  }
-);
+  )
+  // Add TransferFee
+  .addTransferFee(
+    50, // 0.5% fee (basis points)
+    BigInt(500000), // max fee (0.5 token with 6 decimals)
+    payer.publicKey, // config authority
+    payer.publicKey // withdraw authority
+  )
+  // Add PermanentDelegate
+  .addPermanentDelegate(delegateKeypair.publicKey);
+
+// Create token with metadata and other extensions
+const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);
 ```
 
-## Chú ý khi sử dụng
+## Running the Examples
 
-- TokenBuilder tự động kiểm tra tính tương thích giữa các extension
-- TokenBuilder sẽ sắp xếp các extension theo thứ tự tối ưu để khởi tạo
-- ImmutableOwner chỉ dùng cho Token Account, không áp dụng cho Mint
-- Các extension TransferFee, TransferHook, PermanentDelegate và NonTransferable đã được kiểm tra kỹ và hoạt động ổn định
-- MetadataPointer và ConfidentialTransfer cần được cải thiện hơn nữa
+### Create a token with multiple extensions
 
-## Ưu điểm của TokenBuilder
+```bash
+npm run build
+npx ts-node examples/multi-extension-example/multiple-extensions-example.ts
+```
 
-1. **Dễ sử dụng** - API trực quan với method chaining
-2. **An toàn** - Tự động kiểm tra tính tương thích giữa các extension
-3. **Tối ưu** - Sắp xếp các extension theo thứ tự tối ưu
-4. **Mở rộng** - Dễ dàng thêm extension mới trong tương lai
+### Create a token with metadata and multiple extensions
 
-## Ưu điểm của việc sử dụng nhiều extension
+```bash
+npm run build
+npx ts-node examples/multi-extension-example/metadata-with-extensions-example.ts
+```
 
-1. **Tính đa dạng** - Kết hợp nhiều tính năng trong cùng một token
-2. **Tối ưu chi phí** - Tiết kiệm phí giao dịch so với việc tạo nhiều token riêng biệt
-3. **UX tốt hơn** - Người dùng chỉ cần tương tác với một token duy nhất
-4. **Quản lý dễ dàng** - API đơn giản để quản lý tất cả tính năng
+## Notes on Extension Compatibility
 
-## Các yêu cầu
+Not all extensions can be combined with each other. Here are the important rules:
 
-- Solana CLI Tools
-- Node.js và npm/yarn
-- Đủ SOL trong ví (tối thiểu 1 SOL) để thực hiện giao dịch 
+1. **TokenMetadata vs MetadataPointer**
+   - When combining metadata with other extensions, use `addTokenMetadata()` instead of `addMetadata()`
+   - TokenMetadata works better with other extensions
+
+2. **NonTransferable** is not compatible with:
+   - TransferFee
+   - TransferHook
+   - ConfidentialTransfer
+
+3. **ConfidentialTransfer** is not compatible with:
+   - TransferFee
+   - TransferHook
+   - PermanentDelegate
+   - NonTransferable
+
+4. **Recommended combinations**:
+   - TransferFee + PermanentDelegate + InterestBearing: Works well
+   - TokenMetadata + TransferFee + PermanentDelegate: Works well
+   - TokenMetadata + InterestBearing: Works well
+
+The SDK will check the compatibility of extensions and report errors if it detects invalid combinations.
+

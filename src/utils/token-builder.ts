@@ -317,44 +317,39 @@ export class TokenBuilder {
   }
 
   /**
-   * Tạo token với các extensions đã cấu hình
+   * Tạo token với các extension đã cấu hình
+   * 
+   * Phương thức này sẽ tự động nhận biết và xử lý việc tạo token có hoặc không có metadata,
+   * kết hợp với các extensions khác theo cách tối ưu.
    * 
    * @param payer - Keypair của người trả phí giao dịch
    * @returns Promise với thông tin về token đã tạo
    */
-  async build(payer: Keypair): Promise<{
+  async createToken(payer: Keypair): Promise<{
     mint: PublicKey;
     transactionSignature: string;
     token: Token;
   }> {
-    if (!this.mintAuthority) {
-      throw new Error("Mint authority is required");
-    }
-    
-    // Kiểm tra tính tương thích của các extension
-    const compatibilityCheck = checkExtensionCompatibility(this.extensions);
-    if (!compatibilityCheck.isCompatible) {
-      throw new Error(`Extension không tương thích: ${compatibilityCheck.reason}`);
-    }
-
-    // Nếu có cả metadata/tokenMetadata và các extension khác, cần xử lý đặc biệt
+    // Kiểm tra có metadata không
     const hasMetadata = this.metadata || this.tokenMetadata;
     const hasOtherExtensions = this.extensions.filter(ext => 
       ext !== ExtensionType.MetadataPointer).length > 0;
     
-    let mint: PublicKey;
-    let transactionSignature: string;
-
-    // TH1: Nếu chỉ có metadata/tokenMetadata, sử dụng MetadataHelper để xử lý
-    if (hasMetadata && !hasOtherExtensions) {
-      const metadata = this.metadata || this.tokenMetadata;
+    // Kiểm tra trường hợp đặc biệt: NonTransferable + MetadataPointer
+    const hasNonTransferable = this.extensions.includes(ExtensionType.NonTransferable);
+    const hasMetadataPointer = this.extensions.includes(ExtensionType.MetadataPointer);
+    
+    // Trường hợp đặc biệt: NonTransferable + MetadataPointer
+    // Cần sử dụng cách tiếp cận khác vì cặp này có tương tác không tương thích trên blockchain
+    if (hasNonTransferable && hasMetadata) {
+      console.log("Xử lý đặc biệt cho cặp NonTransferable + Metadata");
       
-      if (!metadata) {
-        throw new Error("Metadata configuration is required");
-      }
+      // Xử lý bằng cách tạo token Non-Transferable trước, sau đó thêm metadata
+      // Sử dụng phương thức MetadataHelper.createTokenWithMetadata thay vì createTokenWithMetadataAndExtensions
       
-      try {
-        // Sử dụng helper để tạo token với metadata
+      if (this.tokenMetadata) {
+        console.log("Sử dụng MetadataHelper để tạo token với metadata và NonTransferable...");
+        
         const { MetadataHelper } = require('./metadata-helper');
         
         const result = await MetadataHelper.createTokenWithMetadata(
@@ -363,547 +358,39 @@ export class TokenBuilder {
           {
             decimals: this.decimals,
             mintAuthority: this.mintAuthority,
-            name: metadata.name,
-            symbol: metadata.symbol,
-            uri: metadata.uri,
-            additionalMetadata: metadata.additionalMetadata,
-          }
-        );
-        
-        mint = result.mint;
-        transactionSignature = result.txId;
-        
-        // Trả về token với loại phù hợp
-        if (this.metadata) {
-          const { MetadataPointerToken } = require('../extensions/metadata-pointer');
-          return {
-            mint,
-            transactionSignature,
-            token: new MetadataPointerToken(this.connection, mint, metadata),
-          };
-        } else {
-          const { TokenMetadataToken } = require('../extensions/token-metadata');
-          return {
-            mint,
-            transactionSignature,
-            token: new TokenMetadataToken(this.connection, mint, metadata),
-          };
-        }
-      } catch (error) {
-        console.error("Error creating token with metadata:", error);
-        throw error;
-      }
-    }
-    
-    // TH2: Xử lý các trường hợp còn lại như trước đây
-    try {
-      // 1. Tạo mint keypair
-      const mintKeypair = Keypair.generate();
-      const mint = mintKeypair.publicKey;
-      
-      // 2. Tính toán kích thước mint account
-      let extensionsForSize = [...this.extensions];
-      
-      // Nếu có TokenMetadata, cần tính thêm kích thước
-      let tokenMetadataSize = 0;
-      if (this.tokenMetadata) {
-        const tokenMetadataObj = {
-          mint: mint,
-          name: this.tokenMetadata.name,
-          symbol: this.tokenMetadata.symbol,
-          uri: this.tokenMetadata.uri,
-          additionalMetadata: this.tokenMetadata.additionalMetadata 
-            ? Object.entries(this.tokenMetadata.additionalMetadata) 
-            : [],
-        };
-        // Thêm padding để đảm bảo đủ không gian
-        tokenMetadataSize = (TYPE_SIZE + LENGTH_SIZE + pack(tokenMetadataObj).length) * 2;
-      }
-      
-      // Tính kích thước mint
-      const mintLen = getMintLen(extensionsForSize);
-      
-      // Tính tổng kích thước account với padding thêm cho an toàn
-      const totalSize = mintLen + tokenMetadataSize + 1000; // Tăng lên 1000 bytes cho an toàn
-      
-      console.log(`Mint size: ${mintLen}, Metadata size: ${tokenMetadataSize}, Total size: ${totalSize}`);
-      
-      // Tính lamports cần thiết
-      const lamports = await this.connection.getMinimumBalanceForRentExemption(totalSize);
-
-      // Tạo token cơ bản trước
-      if (!this.extensions.length) {
-        // Nếu không có extensions, tạo mint account đơn giản
-        console.log("Tạo mint account đơn giản không có extensions");
-        
-        const transaction = new Transaction().add(
-          SystemProgram.createAccount({
-            fromPubkey: payer.publicKey,
-            newAccountPubkey: mint,
-            space: mintLen,
-            lamports,
-            programId: TOKEN_2022_PROGRAM_ID,
-          }),
-          createInitializeMintInstruction(
-            mint,
-            this.decimals,
-            this.mintAuthority,
-            this.freezeAuthority,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-        
-        const transactionSignature = await sendAndConfirmTransaction(
-          this.connection,
-          transaction,
-          [payer, mintKeypair],
-          { commitment: 'confirmed' }
-        );
-        
-        return {
-          mint,
-          transactionSignature,
-          token: new Token(this.connection, mint)
-        };
-      }
-      
-      // Xử lý các extension
-      // Để đảm bảo tránh lỗi với một số extension cụ thể, sẽ tách thành các trường hợp riêng biệt
-      
-      // Trường hợp có MetadataPointer extension
-      if (this.extensions.includes(ExtensionType.MetadataPointer)) {
-        console.log("Tạo mint account với MetadataPointer extension...");
-        
-        // Tính toán kích thước account chính xác
-        let tokenMetadataObj;
-        if (this.tokenMetadata) {
-          tokenMetadataObj = {
-            mint: mint,
             name: this.tokenMetadata.name,
             symbol: this.tokenMetadata.symbol,
             uri: this.tokenMetadata.uri,
-            additionalMetadata: this.tokenMetadata.additionalMetadata 
-              ? Object.entries(this.tokenMetadata.additionalMetadata) 
-              : [],
-          };
-        }
-        
-        // Tính kích thước metadata và thêm padding đủ lớn
-        const metadataExtension = TYPE_SIZE + LENGTH_SIZE; // 4 bytes
-        const metadataLen = tokenMetadataObj ? pack(tokenMetadataObj).length : 0;
-        const mintLen = getMintLen([ExtensionType.MetadataPointer]);
-        
-        // Thêm padding 2KB để đủ không gian (tăng thêm so với trước)
-        const totalSize = mintLen + metadataExtension + metadataLen + 2048;
-        
-        console.log(`Kích thước mint: ${mintLen} bytes, metadata: ${metadataLen} bytes, extension: ${metadataExtension} bytes, tổng: ${totalSize} bytes`);
-        
-        // Tính lamports cần thiết
-        const lamports = await this.connection.getMinimumBalanceForRentExemption(totalSize);
-        
-        // Tách thành các giao dịch riêng biệt để tránh lỗi "invalid account data for instruction"
-        
-        // TRANSACTION 1: Chỉ tạo account
-        console.log("Bước 1: Tạo account...");
-        
-        const createAccountTx = new Transaction().add(
-          SystemProgram.createAccount({
-            fromPubkey: payer.publicKey,
-            newAccountPubkey: mint,
-            space: totalSize,
-            lamports,
-            programId: TOKEN_2022_PROGRAM_ID,
-          })
-        );
-        
-        const createAccountSignature = await sendAndConfirmTransaction(
-          this.connection,
-          createAccountTx,
-          [payer, mintKeypair],
-          { commitment: 'confirmed' }
-        );
-        
-        console.log(`Transaction tạo account thành công: ${createAccountSignature.substring(0, 16)}...`);
-        
-        // Chờ đủ lâu để đảm bảo transaction được xác nhận
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        
-        // TRANSACTION 2: Chỉ khởi tạo MetadataPointer
-        console.log("Bước 2: Khởi tạo MetadataPointer...");
-        
-        const initPointerTx = new Transaction().add(
-          createInitializeMetadataPointerInstruction(
-            mint,
-            payer.publicKey,
-            null, // Khởi tạo với null, sẽ cập nhật sau
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-        
-        const initPointerSignature = await sendAndConfirmTransaction(
-          this.connection,
-          initPointerTx,
-          [payer],
-          { commitment: 'confirmed' }
-        );
-        
-        console.log(`Transaction khởi tạo MetadataPointer thành công: ${initPointerSignature.substring(0, 16)}...`);
-        
-        // Chờ đủ lâu để đảm bảo transaction được xác nhận
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        
-        // TRANSACTION 3: Chỉ khởi tạo Mint
-        console.log("Bước 3: Khởi tạo Mint...");
-        
-        const initMintTx = new Transaction().add(
-          createInitializeMintInstruction(
-            mint,
-            this.decimals,
-            this.mintAuthority,
-            this.freezeAuthority,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-        
-        const initMintSignature = await sendAndConfirmTransaction(
-          this.connection,
-          initMintTx,
-          [payer],
-          { commitment: 'confirmed' }
-        );
-        
-        console.log(`Transaction khởi tạo Mint thành công: ${initMintSignature.substring(0, 16)}...`);
-        
-        // Khởi tạo TokenMetadata sau khi khởi tạo mint
-        if (this.tokenMetadata) {
-          // Chờ đủ lâu để đảm bảo transaction được xác nhận
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          console.log("Bước cuối cùng: Khởi tạo TokenMetadata...");
-          const initMetadataTx = new Transaction().add(
-            createInitializeInstruction({
-              programId: TOKEN_2022_PROGRAM_ID,
-              metadata: mint,
-              updateAuthority: payer.publicKey,
-              mint: mint,
-              mintAuthority: payer.publicKey,
-              name: this.tokenMetadata.name,
-              symbol: this.tokenMetadata.symbol,
-              uri: this.tokenMetadata.uri,
-            })
-          );
-          
-          const initMetadataSignature = await sendAndConfirmTransaction(
-            this.connection,
-            initMetadataTx,
-            [payer],
-            { commitment: 'confirmed' }
-          );
-          
-          console.log(`Transaction khởi tạo TokenMetadata thành công: ${initMetadataSignature.substring(0, 16)}...`);
-          
-          // Thêm additional metadata fields nếu có
-          if (this.tokenMetadata.additionalMetadata && 
-              Object.keys(this.tokenMetadata.additionalMetadata).length > 0) {
-            
-            console.log("Thêm các trường metadata bổ sung...");
-            
-            for (const [key, value] of Object.entries(this.tokenMetadata.additionalMetadata)) {
-              if (key.length === 0 || value.length === 0) continue;
-              
-              console.log(`  Thêm trường: ${key}=${value}`);
-              
-              // Chờ giữa các transaction
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              
-              const addFieldTx = new Transaction().add(
-                createUpdateFieldInstruction({
-                  programId: TOKEN_2022_PROGRAM_ID,
-                  metadata: mint,
-                  updateAuthority: payer.publicKey,
-                  field: key,
-                  value: value,
-                })
-              );
-              
-              const addFieldSignature = await sendAndConfirmTransaction(
-                this.connection,
-                addFieldTx,
-                [payer],
-                { commitment: 'confirmed' }
-              );
-              
-              console.log(`  Transaction thêm trường "${key}" thành công: ${addFieldSignature.substring(0, 16)}...`);
-            }
+            additionalMetadata: this.tokenMetadata.additionalMetadata,
           }
-          
-          // Tạo và trả về token với metadata
-          const metadataConfig = {
+        );
+        
+        // Trả về kết quả
+        console.log(`Token với NonTransferable và metadata tạo thành công! Mint: ${result.mint.toString()}`);
+        
+        return {
+          mint: result.mint,
+          transactionSignature: result.txId,
+          token: new TokenMetadataToken(this.connection, result.mint, {
             name: this.tokenMetadata.name,
             symbol: this.tokenMetadata.symbol,
             uri: this.tokenMetadata.uri,
             additionalMetadata: this.tokenMetadata.additionalMetadata || {}
-          };
-          
-          console.log(`Đã tạo thành công token với TokenMetadata: ${mint.toBase58()}`);
-          
-          return {
-            mint,
-            transactionSignature: createAccountSignature, // Trả về signature đầu tiên
-            token: new TokenMetadataToken(this.connection, mint, metadataConfig)
-          };
-        } else {
-          // Nếu chỉ có MetadataPointer nhưng không có TokenMetadata
-          console.log(`Đã tạo thành công token với MetadataPointer: ${mint.toBase58()}`);
-          
-          return {
-            mint,
-            transactionSignature: createAccountSignature,
-            token: new Token(this.connection, mint)
-          };
-        }
-      }
-      
-      // Trường hợp có TransferFee extension
-      if (this.extensions.includes(ExtensionType.TransferFeeConfig) && this.transferFee) {
-        console.log("Tạo mint account với TransferFee extension");
-        
-        const transaction = new Transaction().add(
-          // 1. Tạo account
-          SystemProgram.createAccount({
-            fromPubkey: payer.publicKey,
-            newAccountPubkey: mint,
-            space: totalSize,
-            lamports,
-            programId: TOKEN_2022_PROGRAM_ID,
-          }),
-          
-          // 2. Khởi tạo TransferFee extension
-          createInitializeTransferFeeConfigInstruction(
-            mint,
-            this.transferFee.transferFeeConfigAuthority,
-            this.transferFee.withdrawWithheldAuthority,
-            this.transferFee.feeBasisPoints,
-            this.transferFee.maxFee,
-            TOKEN_2022_PROGRAM_ID
-          ),
-          
-          // 3. Khởi tạo mint
-          createInitializeMintInstruction(
-            mint,
-            this.decimals,
-            this.mintAuthority,
-            this.freezeAuthority,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-        
-        // Gửi transaction
-        const transactionSignature = await sendAndConfirmTransaction(
-          this.connection,
-          transaction,
-          [payer, mintKeypair],
-          { commitment: 'confirmed' }
-        );
-        
-        const transferFeeConfig = {
-          feeBasisPoints: this.transferFee.feeBasisPoints,
-          maxFee: this.transferFee.maxFee,
-          transferFeeConfigAuthority: this.transferFee.transferFeeConfigAuthority,
-          withdrawWithheldAuthority: this.transferFee.withdrawWithheldAuthority
-        };
-        
-        return {
-          mint,
-          transactionSignature,
-          token: new TransferFeeToken(this.connection, mint, transferFeeConfig)
+          })
         };
       }
-      
-      // Trường hợp có NonTransferable extension
-      if (this.extensions.includes(ExtensionType.NonTransferable)) {
-        console.log("Tạo mint account với NonTransferable extension");
-        
-        const transaction = new Transaction().add(
-          // 1. Tạo account
-          SystemProgram.createAccount({
-            fromPubkey: payer.publicKey,
-            newAccountPubkey: mint,
-            space: totalSize,
-            lamports,
-            programId: TOKEN_2022_PROGRAM_ID,
-          }),
-          
-          // 2. Khởi tạo NonTransferable extension
-          createInitializeNonTransferableMintInstruction(
-            mint,
-            TOKEN_2022_PROGRAM_ID
-          ),
-          
-          // 3. Khởi tạo mint
-          createInitializeMintInstruction(
-            mint,
-            this.decimals,
-            this.mintAuthority,
-            this.freezeAuthority,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-        
-        // Gửi transaction
-        const transactionSignature = await sendAndConfirmTransaction(
-          this.connection,
-          transaction,
-          [payer, mintKeypair],
-          { commitment: 'confirmed' }
-        );
-        
-        return {
-          mint,
-          transactionSignature,
-          token: new NonTransferableToken(this.connection, mint)
-        };
-      }
-      
-      // Trường hợp mặc định cho các extension khác
-      console.log("Tạo mint account với các extension khác");
-      
-      // 3. Tạo transaction và các instruction
-      const transaction = new Transaction();
-      
-      // Instruction tạo account
-      transaction.add(
-        SystemProgram.createAccount({
-          fromPubkey: payer.publicKey,
-          newAccountPubkey: mint,
-          space: totalSize,
-          lamports,
-          programId: TOKEN_2022_PROGRAM_ID,
-        })
-      );
-      
-      // Thêm các extension theo thứ tự
-      for (const extensionType of this.extensions) {
-        switch (extensionType) {
-          case ExtensionType.PermanentDelegate:
-            if (this.permanentDelegate) {
-              transaction.add(
-                createInitializePermanentDelegateInstruction(
-                  mint,
-                  this.permanentDelegate,
-                  TOKEN_2022_PROGRAM_ID
-                )
-              );
-            }
-            break;
-            
-          case ExtensionType.TransferHook:
-            if (this.transferHook) {
-              transaction.add(
-                createInitializeTransferHookInstruction(
-                  mint,
-                  payer.publicKey,
-                  this.transferHook.programId,
-                  TOKEN_2022_PROGRAM_ID
-                )
-              );
-            }
-            break;
-            
-          // Các extension khác xử lý tương tự...
-        }
-      }
-      
-      // Thêm instruction khởi tạo mint SAU các extension
-      transaction.add(
-        createInitializeMintInstruction(
-          mint,
-          this.decimals,
-          this.mintAuthority,
-          this.freezeAuthority,
-          TOKEN_2022_PROGRAM_ID
-        )
-      );
-      
-      // Sau đoạn này trong hàm build
-      if (this.transferFee) {
-        // Khởi tạo TransferFee extension
-        console.log("Thêm TransferFee extension...");
-        
-        // Thêm instruction vào transaction tương ứng
-        const initTransferFeeInstruction = createInitializeTransferFeeConfigInstruction(
-          mint,
-          this.transferFee.transferFeeConfigAuthority,
-          this.transferFee.withdrawWithheldAuthority,
-          this.transferFee.feeBasisPoints,
-          this.transferFee.maxFee,
-          TOKEN_2022_PROGRAM_ID
-        );
-        
-        // Thêm vào transaction
-        transaction.add(initTransferFeeInstruction);
-      }
-      
-      // Xử lý InterestBearing extension nếu được thêm
-      if (this.interestBearing) {
-        console.log("Thêm InterestBearing extension...");
-        
-        // Tạo instruction cho Interest Bearing
-        const initInterestBearingInstruction = createInitializeInterestBearingMintInstruction(
-          mint,
-          this.interestBearing.rateAuthority,
-          this.interestBearing.rate,
-          TOKEN_2022_PROGRAM_ID
-        );
-        
-        // Thêm vào transaction
-        transaction.add(initInterestBearingInstruction);
-      }
-      
-      if (this.permanentDelegate) {
-        // Khởi tạo PermanentDelegate extension
-        console.log("Thêm PermanentDelegate extension...");
-        
-        // ... existing code ...
-      }
-      
-      // Gửi transaction
-      const transactionSignature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [payer, mintKeypair],
-        { commitment: 'confirmed' }
-      );
-      
-      // Xác định loại token để trả về
-      let token: Token;
-      
-      if (this.permanentDelegate) {
-        token = new PermanentDelegateToken(this.connection, mint, this.permanentDelegate);
-      } else if (this.transferHook) {
-        token = new TransferHookToken(this.connection, mint, this.transferHook.programId);
-      } else if (this.confidentialTransfer) {
-        token = new ConfidentialTransferToken(this.connection, mint);
-      } else {
-        token = new Token(this.connection, mint);
-      }
-      
-      return {
-        mint,
-        transactionSignature,
-        token
-      };
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to build token: ${error.message}`);
-      } else {
-        throw new Error(`Unknown error building token: ${String(error)}`);
-      }
+    }
+    
+    // Các trường hợp khác: sử dụng phương thức thích hợp 
+    if (hasMetadata && hasOtherExtensions) {
+      return this.createTokenWithMetadataAndExtensions(payer);
+    } else {
+      return this.createTokenWithExtensions(payer);
     }
   }
 
   /**
-   * Tạo token với nhiều extensions kết hợp - phiên bản đơn giản hóa
+   * Tạo token với nhiều extension kết hợp - phiên bản đơn giản hóa
    * 
    * Phương thức này xử lý việc tạo token với metadata kết hợp với các extensions khác
    * theo cách đơn giản nhất, tập trung vào tính ổn định
@@ -973,28 +460,34 @@ export class TokenBuilder {
       // 3. Nếu không có metadata, tạo mint đơn giản với các extensions khác
       console.log("Tạo mint với các extensions khác...");
       
-      // Tính toán kích thước mint account
-      const mintSize = getMintLen(this.extensions);
-      console.log(`Kích thước mint: ${mintSize} bytes`);
+      // Chuẩn bị danh sách extension
+      const extensionsToUse = [...this.extensions];
       
+      // Tính toán kích thước mint account CHÍNH XÁC
+      const mintLen = getMintLen(extensionsToUse);
+      console.log(`Kích thước mint: ${mintLen} bytes`);
+        
       // Tính lamports cần thiết
-      const lamports = await this.connection.getMinimumBalanceForRentExemption(mintSize);
-      
+      const lamports = await this.connection.getMinimumBalanceForRentExemption(mintLen);
+        
       // Tạo transaction
       const transaction = new Transaction();
       
-      // 3.1 Tạo account
+      // 1. Tạo account
       transaction.add(
         SystemProgram.createAccount({
           fromPubkey: payer.publicKey,
           newAccountPubkey: mint,
-          space: mintSize,
+          space: mintLen, // Sử dụng kích thước chính xác, không thêm buffer
           lamports,
           programId: TOKEN_2022_PROGRAM_ID,
         })
       );
       
-      // 3.2 Thêm TransferFee nếu có
+      // 2. Khởi tạo các extension theo thứ tự tối ưu
+      // Thứ tự này bắt chước thứ tự trong createTokenWithMetadataAndExtensions()
+      
+      // 2.1. TransferFee luôn được khởi tạo đầu tiên (nếu có)
       if (this.transferFee) {
         console.log("Thêm TransferFee extension...");
         transaction.add(
@@ -1009,10 +502,63 @@ export class TokenBuilder {
         );
       }
       
-      // 3.3 Thêm các extension khác nếu cần
-      // ... (Thêm các extension khác nếu cần)
+      // 2.2. PermanentDelegate (nếu có)
+      if (this.permanentDelegate) {
+        console.log("Thêm PermanentDelegate extension...");
+        transaction.add(
+          createInitializePermanentDelegateInstruction(
+            mint,
+            this.permanentDelegate,
+            TOKEN_2022_PROGRAM_ID
+          )
+        );
+      }
       
-      // 3.4 Khởi tạo mint LUÔN sau các extensions
+      // 2.3. InterestBearing (nếu có)
+      if (this.interestBearing) {
+        console.log("Thêm InterestBearing extension...");
+        transaction.add(
+          createInitializeInterestBearingMintInstruction(
+            mint,
+            this.interestBearing.rateAuthority,
+            this.interestBearing.rate,
+            TOKEN_2022_PROGRAM_ID
+          )
+        );
+      }
+      
+      // 2.4. TransferHook (nếu có)
+      if (this.transferHook) {
+        console.log("Thêm TransferHook extension...");
+        transaction.add(
+          createInitializeTransferHookInstruction(
+            mint,
+            payer.publicKey,
+            this.transferHook.programId,
+            TOKEN_2022_PROGRAM_ID
+          )
+        );
+      }
+      
+      // 2.5. ConfidentialTransfer (nếu có)
+      if (this.confidentialTransfer) {
+        console.log("Warning: ConfidentialTransfer extension is not fully supported yet");
+        // Chú ý: Không có hàm createInitializeConfidentialTransferMintInstruction trong spl-token vào thời điểm tạo code
+      }
+      
+      // 2.6. NonTransferable (nếu có)
+      if (this.extensions.includes(ExtensionType.NonTransferable)) {
+        console.log("Thêm NonTransferable extension...");
+        transaction.add(
+          createInitializeNonTransferableMintInstruction(
+            mint,
+            TOKEN_2022_PROGRAM_ID
+          )
+        );
+      }
+      
+      // 3. Khởi tạo mint LUÔN sau các extensions
+      console.log("Khởi tạo mint sau các extension...");
       transaction.add(
         createInitializeMintInstruction(
           mint,
@@ -1024,7 +570,7 @@ export class TokenBuilder {
       );
       
       // Gửi transaction
-      console.log("Sending transaction...");
+      console.log("Đang gửi transaction...");
       const transactionSignature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -1178,27 +724,27 @@ export class TokenBuilder {
       }
       
       // PermanentDelegate extension
-      if (this.permanentDelegate) {
-        transaction.add(
-          createInitializePermanentDelegateInstruction(
-            mint,
-            this.permanentDelegate,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-      }
-      
+            if (this.permanentDelegate) {
+              transaction.add(
+                createInitializePermanentDelegateInstruction(
+                  mint,
+                  this.permanentDelegate,
+                  TOKEN_2022_PROGRAM_ID
+                )
+              );
+            }
+            
       // TransferHook extension
-      if (this.transferHook) {
-        transaction.add(
-          createInitializeTransferHookInstruction(
-            mint,
-            payer.publicKey,
-            this.transferHook.programId,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-      }
+            if (this.transferHook) {
+              transaction.add(
+                createInitializeTransferHookInstruction(
+                  mint,
+                  payer.publicKey,
+                  this.transferHook.programId,
+                  TOKEN_2022_PROGRAM_ID
+                )
+              );
+            }
       
       // Confidential Transfer extension
       if (this.confidentialTransfer) {
@@ -1331,5 +877,23 @@ export class TokenBuilder {
         throw new Error(`Unknown error creating token with extensions: ${String(error)}`);
       }
     }
+  }
+
+  /**
+   * DEPRECATED: Sử dụng createToken() thay thế.
+   * Phương thức này được giữ lại để đảm bảo tương thích với mã nguồn cũ.
+   * 
+   * @internal
+   * @param payer - Keypair của người trả phí giao dịch
+   * @returns Promise với thông tin về token đã tạo
+   * @deprecated Sử dụng createToken() để có API đơn giản hơn.
+   */
+  async build(payer: Keypair): Promise<{
+    mint: PublicKey;
+    transactionSignature: string;
+    token: Token;
+  }> {
+    console.warn('DEPRECATED: build() đã lỗi thời, hãy sử dụng createToken() thay thế');
+    return this.createToken(payer);
   }
 } 

@@ -1,5 +1,5 @@
 /**
- * Ví dụ về cách tạo và sử dụng NonTransferableToken (Token không thể chuyển nhượng)
+ * Ví dụ về cách tạo và sử dụng token không thể chuyển nhượng (NonTransferable)
  * 
  * Token không thể chuyển nhượng hữu ích cho các trường hợp như:
  * - Chứng chỉ và chứng nhận
@@ -13,117 +13,136 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   clusterApiUrl,
+  PublicKey,
+  Transaction,
 } from '@solana/web3.js';
-import { NonTransferableToken } from '../../src/extensions/non-transferable';
 import * as fs from 'fs';
 import * as path from 'path';
+import { TokenBuilder } from '../../src/utils/token-builder';
+import { NonTransferableToken } from '../../src/extensions/non-transferable';
+import { 
+  createAssociatedTokenAccountInstruction, 
+  getAssociatedTokenAddress, 
+  createMintToInstruction, 
+  transferChecked, 
+  TOKEN_2022_PROGRAM_ID 
+} from '@solana/spl-token';
 
 async function main() {
-  // Kết nối đến Solana Devnet
   const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
-  // Tải keypair từ filesystem thay vì tạo mới
   let payer: Keypair;
   const walletPath = path.join(process.env.HOME!, '.config', 'solana', 'id.json');
   
   try {
-    // Đọc private key từ file config của Solana
     const secretKeyString = fs.readFileSync(walletPath, { encoding: 'utf8' });
     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
     payer = Keypair.fromSecretKey(secretKey);
-    console.log(`Sử dụng ví local: ${payer.publicKey.toString()}`);
   } catch (error) {
-    console.error("Không thể đọc ví local. Tạo keypair mới...");
     payer = Keypair.generate();
-    console.log(`Sử dụng keypair mới: ${payer.publicKey.toString()}`);
     
-    // Thử airdrop SOL
-    console.log('Requesting airdrop for payer...');
-    try {
-      const signature = await connection.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
-      await connection.confirmTransaction(signature);
-      console.log(`Airdrop confirmed: ${signature}`);
-    } catch (error) {
-      console.error("Airdrop failed:", error);
-      return;
-    }
+    const signature = await connection.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
+    await connection.confirmTransaction(signature);
   }
 
-  // Kiểm tra số dư
-  try {
-    const balance = await connection.getBalance(payer.publicKey);
-    console.log(`Số dư ví: ${balance / LAMPORTS_PER_SOL} SOL`);
-    
-    if (balance < 0.5 * LAMPORTS_PER_SOL) {
-      console.error("Số dư không đủ để thực hiện các giao dịch test. Cần tối thiểu 0.5 SOL");
-      return;
-    }
-  } catch (error) {
-    console.error("Không thể kiểm tra số dư:", error);
+  const balance = await connection.getBalance(payer.publicKey);
+  
+  if (balance < 0.5 * LAMPORTS_PER_SOL) {
+    console.error("Insufficient balance to perform transactions");
     return;
   }
 
-  // Tạo Non-Transferable Token
-  console.log('Creating Non-Transferable Token...');
-  const nonTransferableToken = await NonTransferableToken.create(
-    connection,
-    payer,
-    {
-      decimals: 9,
-      mintAuthority: payer.publicKey,
-      freezeAuthority: payer.publicKey,
-    }
-  );
+  // Create Non-Transferable Token with TokenBuilder
+  const tokenBuilder = new TokenBuilder(connection)
+    .setTokenInfo(9, payer.publicKey)
+    .addNonTransferable();
+  
+  const { mint, transactionSignature } = await tokenBuilder.createToken(payer);
 
-  console.log(`Non-Transferable Token created with mint: ${nonTransferableToken.getMint().toBase58()}`);
+  console.log(`Non-Transferable Token created: ${mint.toBase58()}`);
+  
+  // Create NonTransferableToken instance from mint address
+  const nonTransferableToken = new NonTransferableToken(connection, mint);
 
-  // Kiểm tra token có thuộc tính NonTransferable
-  const isNonTransferable = await nonTransferableToken.isNonTransferable();
-  console.log(`Token has NonTransferable extension: ${isNonTransferable}`);
-
-  // Tạo token account và mint token
-  console.log('Creating token account and minting tokens...');
+  // Create token account and mint tokens
   const recipientKeypair = Keypair.generate();
-  const tokenAccount = await nonTransferableToken.createAccountAndMintTo(
+  
+  // Create token account
+  const recipientTokenAddress = await getAssociatedTokenAddress(
+    mint,
     recipientKeypair.publicKey,
-    payer,
-    BigInt(1_000_000_000), // 1 token with 9 decimals
-    payer
+    false,
+    TOKEN_2022_PROGRAM_ID
   );
-
-  console.log(`Token account created: ${tokenAccount.toBase58()}`);
+  
+  // Create and send transaction
+  const transaction = new Transaction();
+  transaction.add(
+    createAssociatedTokenAccountInstruction(
+      payer.publicKey,
+      recipientTokenAddress,
+      recipientKeypair.publicKey,
+      mint,
+      TOKEN_2022_PROGRAM_ID
+    ),
+    createMintToInstruction(
+      mint,
+      recipientTokenAddress,
+      payer.publicKey,
+      BigInt(1_000_000_000), // 1 token (9 decimals)
+      [],
+      TOKEN_2022_PROGRAM_ID
+    )
+  );
+  
+  const mintSignature = await connection.sendTransaction(transaction, [payer]);
+  await connection.confirmTransaction(mintSignature);
+  
   console.log(`Minted 1 token to ${recipientKeypair.publicKey.toBase58()}`);
 
-  // Thử chuyển token (để chứng minh rằng token không thể chuyển)
-  console.log('Attempting to transfer tokens (this should fail)...');
+  // Try to transfer token (to demonstrate that token cannot be transferred)
   try {
     const destinationKeypair = Keypair.generate();
-    // Tạo token account cho người nhận
-    const destAccount = await nonTransferableToken.createOrGetTokenAccount(
-      payer,
-      destinationKeypair.publicKey
+    // Create token account for recipient
+    const destinationTokenAddress = await getAssociatedTokenAddress(
+      mint,
+      destinationKeypair.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
     );
-
-    // Thử chuyển token - điều này sẽ thất bại vì token không thể chuyển
-    await nonTransferableToken.attemptTransfer(
-      tokenAccount,
-      destAccount.address,
-      recipientKeypair,
-      BigInt(100_000_000), // 0.1 token
-      9
+    
+    // Create account for recipient
+    const createDestAccountTx = new Transaction().add(
+      createAssociatedTokenAccountInstruction(
+        payer.publicKey,
+        destinationTokenAddress,
+        destinationKeypair.publicKey,
+        mint,
+        TOKEN_2022_PROGRAM_ID
+      )
+    );
+    
+    await connection.sendTransaction(createDestAccountTx, [payer]);
+    
+    // Try to transfer token - will fail because token is non-transferable
+    await transferChecked(
+      connection,
+      recipientKeypair, // payer
+      recipientTokenAddress, // source
+      mint, // mint
+      destinationTokenAddress, // destination
+      recipientKeypair, // owner
+      BigInt(100_000_000), // amount (0.1 token) 
+      9, // decimals
+      [],
+      undefined,
+      TOKEN_2022_PROGRAM_ID
     );
   } catch (error: any) {
-    console.log(`Transfer failed as expected: ${error.message}`);
+    console.log(`Transfer failed (as expected): ${error.message}`);
   }
 
-  // Lấy thông tin về token
-  const nonTransferableInfo = await nonTransferableToken.getNonTransferableInfo();
-  console.log('Non-Transferable Token Info:');
-  console.log(nonTransferableInfo);
-
-  // Kiểm tra khả năng chuyển token
-  const canTransfer = await nonTransferableToken.canTransferTokens(tokenAccount);
-  console.log(`Can this token be transferred? ${canTransfer ? 'Yes' : 'No'}`);
+  console.log('Non-Transferable Token created successfully!');
 }
 
 main().catch((error) => {

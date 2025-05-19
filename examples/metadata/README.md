@@ -1,38 +1,15 @@
-# Metadata trong Token Extensions
+# Metadata in Token Extensions
 
-Thư mục này chứa các ví dụ về cách sử dụng Metadata Extension từ Token Extensions.
+This directory contains examples of how to use the Metadata Extension from Token Extensions.
 
-## API Mới - Đơn giản và Dễ sử dụng
+## New API - Simple and Easy to Use
 
-Chúng tôi đã phát triển một API mới đơn giản hơn để tạo token với metadata. API mới này xử lý đúng thứ tự khởi tạo, tự động tính toán kích thước cần thiết và chia nhỏ các transaction để đảm bảo thành công.
+We have developed a new, simpler API to create tokens with metadata. This new API handles the correct initialization order, automatically calculates the necessary size, and splits transactions to ensure success.
 
-### Cách 1: Sử dụng MetadataHelper trực tiếp (Đơn giản nhất)
-
-```typescript
-import { MetadataHelper } from "solana-token-extension-boost";
-
-const result = await MetadataHelper.createTokenWithMetadata(
-  connection,
-  payer,
-  {
-    decimals: 9,
-    mintAuthority: payer.publicKey,
-    name: "My Token",
-    symbol: "TKN",
-    uri: "https://example.com/metadata.json",
-    additionalMetadata: {
-      "description": "Token với metadata"
-    }
-  }
-);
-
-console.log(`Token tạo thành công: ${result.mint.toString()}`);
-```
-
-### Cách 2: Sử dụng TokenBuilder (Khuyến nghị)
+### Method 1: Using TokenBuilder (Recommended)
 
 ```typescript
-import { TokenBuilder } from "solana-token-extension-boost";
+import { TokenBuilder } from "../../src/utils/token-builder";
 
 const tokenBuilder = new TokenBuilder(connection);
 
@@ -48,43 +25,43 @@ tokenBuilder
     }
   );
 
-const { mint, transactionSignature, token } = await tokenBuilder.build(payer);
+const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);
 ```
 
-## Các vấn đề đã khắc phục
+## Issues Fixed
 
-Chúng tôi đã sửa các vấn đề sau:
+We have fixed the following issues:
 
-1. **Thứ tự khởi tạo không đúng**: API mới đảm bảo thứ tự khởi tạo đúng theo quy định của Solana.
-2. **Không gian tài khoản không đủ**: Tự động tính toán không gian cần thiết với padding dư dả.
-3. **Lỗi "invalid account data"**: Chia nhỏ transaction để tránh lỗi này.
-4. **Lỗi khi kết hợp với extension khác**: Xử lý đặc biệt cho trường hợp metadata + extensions khác.
+1. **Incorrect initialization order**: The new API ensures the correct initialization order as required by Solana.
+2. **Insufficient account space**: Automatically calculates necessary space with sufficient padding.
+3. **"Invalid account data" error**: Splits transactions to avoid this error.
+4. **Errors when combining with other extensions**: Special handling for metadata + other extensions.
 
-## Thứ tự khởi tạo đúng
+## Correct Initialization Order
 
-API mới đảm bảo thứ tự khởi tạo đúng theo 5 bước:
+The new API ensures the correct initialization order in 5 steps:
 
-1. Tạo account với không gian đủ lớn
-2. Khởi tạo MetadataPointer (trỏ đến chính mint)
-3. Khởi tạo Mint
-4. Khởi tạo Metadata
-5. Thêm các trường metadata bổ sung
+1. Create account with sufficient space
+2. Initialize MetadataPointer (pointing to the mint itself)
+3. Initialize Mint
+4. Initialize Metadata
+5. Add additional metadata fields
 
-## Chạy ví dụ
+## Running the Examples
 
-Chạy ví dụ đơn giản:
+Run the simple example:
 
 ```bash
-npx ts-node examples/metadata/simple-metadata.ts
+npx ts-node simple-metadata.ts
 ```
 
-Chạy ví dụ đầy đủ:
+Run the combined extensions example:
 
 ```bash
-npx ts-node examples/metadata/index.ts
+npx ts-node combined-extensions.ts
 ```
 
-## Đọc metadata từ token
+## Reading Metadata from a Token
 
 ```typescript
 import { getTokenMetadata } from "@solana/spl-token";
@@ -99,7 +76,7 @@ console.log(`Name: ${tokenMetadata?.name}`);
 console.log(`Symbol: ${tokenMetadata?.symbol}`);
 console.log(`URI: ${tokenMetadata?.uri}`);
 
-// Đọc metadata bổ sung
+// Read additional metadata
 if (tokenMetadata?.additionalMetadata) {
   for (const [key, value] of tokenMetadata.additionalMetadata) {
     console.log(`${key}: ${value}`);
@@ -107,8 +84,8 @@ if (tokenMetadata?.additionalMetadata) {
 }
 ```
 
-## Ví dụ mã nguồn
+## Example Source Code
 
-- [simple-metadata.ts](./simple-metadata.ts): Ví dụ đơn giản nhất để tạo token với metadata
-- [index.ts](./index.ts): Ví dụ đầy đủ hơn với nhiều phương pháp
-- [MetadataHelper](../../src/utils/metadata-helper.ts): Mã nguồn của MetadataHelper
+- [simple-metadata.ts](./simple-metadata.ts): The simplest example to create a token with metadata
+- [combined-extensions.ts](./combined-extensions.ts): A more comprehensive example with metadata and other extensions
+- [TokenBuilder](../../src/utils/token-builder.ts): Source code of the TokenBuilder

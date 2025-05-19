@@ -1,8 +1,9 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { ConfidentialTransferToken } from "solana-token-extension-boost";
 import * as fs from "fs";
 import * as path from "path";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { TokenBuilder } from "../../src/utils/token-builder";
+import { ConfidentialTransferToken } from "../../src/extensions/confidential-transfer";
 
 async function main() {
   const connection = new Connection("https://api.devnet.solana.com", "confirmed");
@@ -14,11 +15,8 @@ async function main() {
     const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
     payer = Keypair.fromSecretKey(secretKey);
-    console.log(`Using wallet: ${payer.publicKey.toString()}`);
   } catch (error) {
-    console.error("Could not read wallet. Creating a new keypair...");
     payer = Keypair.generate();
-    console.log(`Using generated wallet: ${payer.publicKey.toString()}`);
     
     const airdropSignature = await connection.requestAirdrop(
       payer.publicKey,
@@ -27,91 +25,73 @@ async function main() {
     await connection.confirmTransaction(airdropSignature);
   }
 
-  console.log("\nStep 1: Creating a token with confidential transfer extension");
+  // Step 1: Create token with confidential transfer extension
+  const tokenBuilder = new TokenBuilder(connection)
+    .setTokenInfo(9, payer.publicKey)
+    .addConfidentialTransfer(true); // autoEnable = true
   
-  const token = await ConfidentialTransferToken.create(
-    connection,
-    payer,
-    {
-      decimals: 9,
-      mintAuthority: payer.publicKey,
-      autoEnable: true
-    }
-  );
+  const { mint, token } = await tokenBuilder.createToken(payer);
+  const confidentialToken = new ConfidentialTransferToken(connection, mint);
   
-  const mintAddress = token.getMint();
-  console.log(`Created token with mint: ${mintAddress.toString()}`);
+  console.log(`Token created with mint: ${mint.toString()}`);
   
-  console.log("\nStep 2: Creating recipient keypair");
+  // Step 2: Create recipient keypair
   const recipient = Keypair.generate();
-  console.log(`Recipient: ${recipient.publicKey.toString()}`);
   
-  console.log("Airdropping SOL to recipient...");
   const airdropSignature = await connection.requestAirdrop(
     recipient.publicKey,
     1 * 10 ** 9
   );
   await connection.confirmTransaction(airdropSignature);
   
-  console.log("\nStep 3: Configuring accounts for confidential transfers");
-  
-  let signature = await token.configureAccount(
+  // Step 3: Configure accounts for confidential transfer
+  let signature = await confidentialToken.configureAccount(
     payer,
     payer
   );
   console.log(`Configured payer account for confidential transfers`);
-  console.log(`Transaction: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
   
-  signature = await token.configureAccount(
+  signature = await confidentialToken.configureAccount(
     payer,
     recipient
   );
   console.log(`Configured recipient account for confidential transfers`);
-  console.log(`Transaction: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
   
-  console.log("\nStep 4: Minting tokens with confidential amount");
-  
+  // Step 4: Mint tokens with confidential amount
   const payerTokenAccount = await getAssociatedTokenAddress(
-    mintAddress,
+    mint,
     payer.publicKey,
     false
   );
   
   const mintAmount = BigInt(100_000_000_000);
-  signature = await token.mintToConfidential(
+  signature = await confidentialToken.mintToConfidential(
     payer,
     payer,
     payerTokenAccount,
     mintAmount
   );
-  console.log(`Minted ${Number(mintAmount) / 10**9} tokens to payer`);
-  console.log(`Transaction: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+  console.log(`Minted ${Number(mintAmount) / 10**9} tokens to payer (confidential)`);
   
-  console.log("\nStep 5: Performing confidential transfer");
-  
+  // Step 5: Perform confidential transfer
   const recipientTokenAccount = await getAssociatedTokenAddress(
-    mintAddress,
+    mint,
     recipient.publicKey,
     false
   );
   
   const transferAmount = BigInt(10_000_000_000);
-  signature = await token.confidentialTransfer(
+  signature = await confidentialToken.confidentialTransfer(
     payer,
     payerTokenAccount,
     recipientTokenAccount,
     payer,
     transferAmount
   );
-  console.log(`Transferred ${Number(transferAmount) / 10**9} tokens with confidential amount`);
+  console.log(`Transferred ${Number(transferAmount) / 10**9} tokens confidentially`);
   console.log(`Transaction: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
   
-  console.log("\n===== SUMMARY =====");
-  console.log(`- Token Address: ${mintAddress.toString()}`);
-  console.log(`- Payer Token Account: ${payerTokenAccount.toString()}`);
-  console.log(`- Recipient Token Account: ${recipientTokenAccount.toString()}`);
-  console.log(`- View details on Solana Explorer (devnet):`);
-  console.log(`  https://explorer.solana.com/address/${mintAddress.toString()}?cluster=devnet`);
+  console.log(`Token details: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
 }
 
 main()

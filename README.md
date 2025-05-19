@@ -16,34 +16,54 @@ The SDK currently supports the following Token Extensions:
 - **Confidential Transfer**: Execute confidential token transfers that hide amounts  
 - **Permanent Delegate**: Permanently delegate token management authority to another address
 - **Transfer Hook**: Execute custom logic on token transfers through a separate program
-- **Multiple Extensions**: Create tokens with multiple extensions at once
+- **Non-Transferable**: Create non-transferable tokens (soulbound tokens)
+- **Interest-Bearing**: Create tokens that accrue interest over time
+- **Multiple Extensions**: Create tokens with multiple extensions at once, including metadata
 
-## Multi-Extension Support
+## Simplified Token Creation
 
-This SDK now supports creating tokens with multiple extensions in a single transaction. For example:
+We've improved the token creation process with new streamlined methods:
+
+### Recommended Approach: Using TokenBuilder
 
 ```typescript
-// Create a token with both Transfer Fee and Metadata
-const factory = new Token2022Factory(connection);
-const { transferFeeToken, metadataToken, mint } = await factory.createTransferFeeWithMetadataToken(
-  payer,
-  {
-    decimals: 9,
-    mintAuthority: payer.publicKey,
-    transferFee: {
-      feeBasisPoints: 100, // 1%
-      maxFee: BigInt(1_000_000_000),
-      transferFeeConfigAuthority: payer,
-      withdrawWithheldAuthority: payer
-    },
-    metadata: {
-      name: "My Token",
-      symbol: "TKN",
-      uri: "https://example.com/metadata.json",
-      additionalMetadata: { /* optional additional fields */ }
-    }
-  }
-);
+import { Connection, Keypair, clusterApiUrl } from "@solana/web3.js";
+import { TokenBuilder } from "solana-token-extension-boost";
+
+// Connect to Solana network
+const connection = new Connection(clusterApiUrl("devnet"));
+const payer = Keypair.generate(); // Your payer keypair
+
+// Create a token with multiple extensions including metadata
+const tokenBuilder = new TokenBuilder(connection)
+  .setTokenInfo(
+    9, // decimals
+    payer.publicKey, // mint authority
+    null // freeze authority
+  )
+  // Add metadata
+  .addMetadata(
+    "My Token",
+    "TKN",
+    "https://example.com/metadata.json",
+    { "website": "https://example.com" }
+  )
+  // Add TransferFee extension
+  .addTransferFee(
+    100, // 1% fee (basis points)
+    BigInt(1000000000), // max fee 1 token
+    payer.publicKey, // config authority
+    payer.publicKey // withdraw authority
+  )
+  // Add other extensions
+  .addNonTransferable()
+  .addPermanentDelegate(payer.publicKey);
+
+// Create the token with all extensions
+const { mint, transactionSignature, token } = 
+  await tokenBuilder.createTokenWithMetadataAndExtensions(payer);
+
+console.log(`Token created: ${mint.toBase58()}`);
 ```
 
 ## Examples
@@ -53,19 +73,32 @@ The SDK includes several examples to help you get started:
 - **Transfer Fee Examples** (`examples/transfer-fee/`): Create and use tokens with transfer fees
 - **Transfer Hook Examples** (`examples/transfer-hook/`): Create tokens with custom transfer hooks
 - **Multi-Extension Examples** (`examples/multi-extension-example/`): Create tokens with multiple extensions at once
+- **Metadata Examples** (`examples/metadata/`): Create tokens with metadata and other extensions
 
 Run an example with:
 ```bash
-ts-node examples/multi-extension-example/transfer-fee-with-metadata.ts
+ts-node examples/metadata/combined-extensions.ts
 ```
+
+## New Features and Improvements
+
+Recent improvements to the SDK include:
+
+- **Enhanced TokenBuilder**: The `TokenBuilder` class now features new optimized methods:
+  - `createTokenWithExtensions()`: For tokens with non-metadata extensions
+  - `createTokenWithMetadataAndExtensions()`: For tokens with metadata and other extensions
+
+- **Deprecated Legacy Methods**: The `build()` method and various factory methods are now marked as deprecated in favor of the more efficient new methods.
+
+- **Improved Error Handling**: Better validation and error reporting for extension compatibility.
+
+- **Comprehensive Documentation**: Updated guides and examples in the `docs/` directory.
 
 ## Roadmap
 
-Upcoming Token Extensions planned for development and integration into the SDK:
+Upcoming Token Extensions planned for integration into the SDK:
 
-- **Non-transferable**: Create non-transferable tokens (soulbound tokens)  
 - **Default Account State**: Set default state for newly created token accounts  
-- **Interest-Bearing**: Create tokens that accrue interest over time  
 - **Mint Close Authority**: Define authority to close a mint account  
 - **Token Groups & Group Pointer**: Group multiple tokens under a shared classification or identity  
 - **Member Pointer**: Link individual tokens to a token group via on-chain metadata  
@@ -77,3 +110,12 @@ Upcoming Token Extensions planned for development and integration into the SDK:
 
 ```bash
 npm install solana-token-extension-boost
+```
+
+## Documentation
+
+Refer to the `docs/` directory for detailed guides on using each feature:
+
+- [Token Extensions Guide](docs/token-extensions-guide.md): A comprehensive guide to token extensions
+- [Metadata Integration Guide](docs/metadata-integration-guide.md): How to create tokens with metadata
+- [Multi-Extension Guide](docs/multi-extension-guide.md): How to combine multiple extensions

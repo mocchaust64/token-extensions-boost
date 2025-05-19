@@ -1,52 +1,52 @@
-# Ví dụ Transfer Fee
+# Transfer Fee Example
 
-Thư mục này chứa các ví dụ về cách sử dụng Transfer Fee Extension với token SPL Token-2022.
+This directory contains examples of how to use the Transfer Fee Extension with SPL Token-2022.
 
-## Các ví dụ
+## Examples
 
-### 1. Cơ bản (index.ts)
+### 1. Basic (index.ts)
 
-Ví dụ cơ bản về cách tạo và sử dụng một token với TransferFee extension. Ví dụ này bao gồm:
+A basic example of how to create and use a token with the TransferFee extension. This example includes:
 
-- Tạo token với phí chuyển khoản 1%
-- Mint token cho chủ sở hữu
-- Chuyển token và tự động tính toán phí
-- Thu thập (harvest) phí từ tài khoản giao dịch về mint
-- Rút phí từ mint về ví của người thu phí
+- Creating a token with a 1% transfer fee
+- Minting tokens to the owner
+- Transferring tokens with automatic fee calculation
+- Harvesting fees from transaction accounts to the mint
+- Withdrawing fees from the mint to the fee collector's wallet
 
-Để chạy:
+To run:
 ```bash
-ts-node examples/transfer-fee/index.ts
+npx ts-node index.ts
 ```
 
-### 2. Quản lý nhiều tài khoản (multi-account.ts)
+### 2. Multiple Accounts Management (multi-account.ts)
 
-Ví dụ nâng cao về cách quản lý phí với nhiều tài khoản. Ví dụ này minh họa:
+An advanced example of how to manage fees with multiple accounts. This example demonstrates:
 
-- Tạo token với phí chuyển khoản 1%
-- Chuyển token đến nhiều tài khoản khác nhau
-- Tìm tất cả các tài khoản đang giữ phí
-- Thu thập phí từ nhiều tài khoản cùng một lúc
-- Rút phí về một địa chỉ duy nhất
+- Creating a token with a 1% transfer fee
+- Transferring tokens to multiple different accounts
+- Finding all accounts holding withheld fees
+- Harvesting fees from multiple accounts at once
+- Withdrawing fees to a single address
 
-Để chạy:
+To run:
 ```bash
-ts-node examples/transfer-fee/multi-account.ts
+npx ts-node multi-account.ts
 ```
 
-## Chức năng chính
+## Key Features
 
-TransferFeeToken cung cấp các phương thức sau:
+TransferFeeToken provides the following methods:
 
-- `create()` - Tạo token mới với TransferFeeConfig extension
-- `calculateFee()` - Tính toán phí cho một giao dịch
-- `transfer()` - Chuyển token với phí
-- `harvestWithheldTokensToMint()` - Thu thập phí từ các tài khoản về mint
-- `withdrawFeesFromMint()` - Rút phí từ mint về địa chỉ chỉ định
-- `findAccountsWithWithheldFees()` - Tìm tất cả tài khoản đang giữ phí
+- `create()` - Create a new token with the TransferFeeConfig extension
+- `calculateFee()` - Calculate the fee for a transaction
+- `transfer()` - Transfer tokens with fees
+- `harvestWithheldTokensToMint()` - Harvest fees from accounts to the mint
+- `withdrawFeesFromMint()` - Withdraw fees from the mint to a specified address
+- `findAccountsWithWithheldFees()` - Find all accounts holding withheld fees
 
-## Các yêu cầu
+## Requirements
 
 - Solana CLI Tools
-- Node.js và npm/yarn
-- Đủ SOL trong ví (tối thiểu 1 SOL) để thực hiện giao dịch 
+- Node.js and npm/yarn
+- Sufficient SOL in your wallet (minimum 1 SOL) to perform transactions 

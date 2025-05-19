@@ -1,92 +1,104 @@
 # Solana Token Extension Boost - Examples
 
-Thư mục này chứa các ví dụ về cách sử dụng SDK Solana Token Extension Boost để làm việc với các extension của Solana Token 2022.
+This directory contains examples of how to use the Solana Token Extension Boost SDK to work with Solana Token 2022 extensions.
 
-## Cấu trúc thư mục
+## Directory Structure
 
-Mỗi extension có thư mục riêng với mã nguồn và tài liệu hướng dẫn:
+Each extension has its own directory with source code and documentation:
 
-- **[transfer-fee](./transfer-fee/)** - Ví dụ về tạo token với khả năng tính phí chuyển khoản tự động
-- **[confidential-transfer](./confidential-transfer/)** - Ví dụ về token với chuyển khoản bí mật
-- **[metadata-pointer](./metadata-pointer/)** - Ví dụ về token với metadata phong phú
-- **[immutable-owner](./immutable-owner/)** - Ví dụ về token account với owner không thể thay đổi
-- **[permanent-delegate](./permanent-delegate/)** - Ví dụ về token với khả năng kiểm soát bởi permanent delegate
+- **[transfer-fee](./transfer-fee/)** - Examples of creating tokens with automatic transfer fee capabilities
+- **[confidential-transfer](./confidential-transfer/)** - Examples of tokens with confidential transfers
+- **[metadata](./metadata/)** - Examples of tokens with rich metadata
+- **[immutable-owner-example](./immutable-owner-example/)** - Examples of token accounts with immutable owners
+- **[permanent-delegate](./permanent-delegate/)** - Examples of tokens with permanent delegate control
+- **[transfer-hook](./transfer-hook/)** - Examples of tokens with transfer hook functionality
+- **[non-transferable](./non-transferable/)** - Examples of non-transferable (soulbound) tokens
+- **[multi-extension-example](./multi-extension-example/)** - Examples of tokens with multiple extensions
+- **[extension-compatibility-test](./extension-compatibility-test/)** - Tests for extension compatibility
 
-## Cách chạy ví dụ
+## How to Run Examples
 
-Mỗi thư mục ví dụ chứa file `index.ts` có thể chạy độc lập. Để chạy một ví dụ:
+Each example directory contains an `index.ts` file that can be run independently. To run an example:
 
 ```bash
-# Di chuyển vào thư mục của extension bạn muốn thử
+# Navigate to the extension directory you want to try
 cd transfer-fee
 
-# Cài đặt dependencies
+# Install dependencies
 npm install
 
-# Chạy ví dụ
+# Run the example
 npx ts-node index.ts
 ```
 
-## Yêu cầu
+## Requirements
 
-- Node.js 14+ và npm
-- Solana CLI Tools (để tạo ví trên Solana devnet)
-- Ví Solana với một số SOL trên devnet
+- Node.js 14+ and npm
+- Solana CLI Tools (for creating a wallet on Solana devnet)
+- Solana wallet with some SOL on devnet
 
-## Cách thiết lập môi trường
+## Setting Up Your Environment
 
-1. **Cài đặt Solana CLI Tools**:
+1. **Install Solana CLI Tools**:
    ```
    sh -c "$(curl -sSfL https://release.solana.com/v1.17.5/install)"
    ```
 
-2. **Tạo ví Solana**:
+2. **Create a Solana Wallet**:
    ```
    solana-keygen new
    ```
 
-3. **Chuyển sang devnet**:
+3. **Switch to Devnet**:
    ```
    solana config set --url devnet
    ```
 
-4. **Airdrop SOL cho ví**:
+4. **Airdrop SOL to Your Wallet**:
    ```
    solana airdrop 1
    ```
 
-## Giải thích Token-2022 Extensions
+## Token-2022 Extensions Explained
 
 ### Transfer Fee
 
-Extension này cho phép token tự động thu phí khi được chuyển, mở ra khả năng tạo tokenomics phức tạp và mô hình doanh thu đa dạng.
+This extension allows tokens to automatically collect fees when transferred, enabling complex tokenomics and revenue models.
 
 ### Confidential Transfer
 
-Extension này cho phép thực hiện các giao dịch bí mật không tiết lộ số lượng, tăng cường quyền riêng tư cho người dùng token.
+This extension allows for private transactions that don't disclose amounts, enhancing privacy for token users.
 
-### Metadata Pointer
+### Metadata
 
-Extension này lưu trữ và quản lý metadata phong phú cho token, cho phép token chứa thông tin và thuộc tính bổ sung.
+This extension stores and manages rich metadata for tokens, allowing tokens to contain additional information and attributes.
 
 ### Immutable Owner
 
-Extension này đảm bảo rằng owner của tài khoản token không thể thay đổi, tăng cường bảo mật chống lại các cuộc tấn công chiếm đoạt.
+This extension ensures that the owner of a token account cannot be changed, enhancing security against takeover attacks.
 
 ### Permanent Delegate
 
-Extension này cho phép chỉ định một địa chỉ có khả năng chuyển token từ bất kỳ tài khoản nào mà không cần sự đồng ý, hữu ích cho các token cần khả năng thu hồi.
+This extension allows designating an address that can transfer tokens from any account without consent, useful for tokens that need revocation capabilities.
 
-## Tích hợp với dự án của bạn
+### Transfer Hook
+
+This extension allows tokens to execute custom logic (via a program) when they are transferred.
+
+### Non-Transferable
+
+This extension creates tokens that cannot be transferred once received, useful for credentials, certificates, and soulbound tokens.
+
+## Integrating With Your Project
 
 ```javascript
-// Cài đặt SDK
+// Install SDK
 npm install solana-token-extension-boost
 
-// Import extension bạn cần
+// Import the extension you need
 import { TransferFeeToken } from "solana-token-extension-boost";
 
-// Sử dụng extension
+// Use the extension
 const token = await TransferFeeToken.create(
   connection,
   payer,
@@ -101,13 +113,9 @@ const token = await TransferFeeToken.create(
     }
   }
 );
-``` 
+```
 
-## Token Extension Examples
-
-This directory contains examples for using the Token Extension Boost SDK with various token extensions.
-
-### Available Examples
+## Available Examples
 
 - **Transfer Fee**: Examples showing how to create and use tokens with transfer fees
   - Create a token with transfer fee
@@ -117,9 +125,9 @@ This directory contains examples for using the Token Extension Boost SDK with va
 - **Metadata**: Examples showing how to create tokens with embedded metadata
   - Create a token with metadata (new simplified API)
   - Read and update token metadata
-  - Create NFTs with rich metadata
+  - Create tokens with rich metadata
 
-- **Non-transferable**: Examples showing how to create non-transferable tokens (soulbound tokens)
+- **Non-transferable**: Examples showing how to create non-transferable tokens
   - Create a non-transferable token
   - Mint non-transferable tokens to an account
   - Verify non-transferable properties
@@ -143,12 +151,6 @@ npm run build
 # Run a specific example
 npx ts-node examples/non-transferable/create-non-transferable-token.ts
 ```
-
-### Prerequisites
-
-- Node.js and npm installed
-- A Solana wallet (will be generated if not available)
-- SOL in your wallet for transactions (examples will try to airdrop on devnet)
 
 ### Using the Examples as Reference
 
