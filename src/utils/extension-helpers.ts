@@ -98,4 +98,51 @@ export async function getTokenInfo(
   } catch (error) {
     return { isProgramToken2022, extensions: [] };
   }
+}
+
+/**
+ * Tìm thứ tự khởi tạo tối ưu cho các extension
+ * Một số extension phải được khởi tạo trước khi khởi tạo mint, số khác phải sau.
+ * 
+ * @param extensionTypes - Mảng các loại extension cần sắp xếp
+ * @returns Mảng đã sắp xếp lại theo thứ tự tối ưu
+ */
+export function getOptimalInitializationOrder(extensionTypes: ExtensionType[]): ExtensionType[] {
+  // Một số extension phải khởi tạo trước khi khởi tạo mint
+  const beforeMintInit = [
+    ExtensionType.MintCloseAuthority,
+    ExtensionType.TransferFeeConfig,
+    ExtensionType.ConfidentialTransferMint,
+    ExtensionType.DefaultAccountState,
+    ExtensionType.MetadataPointer, // Điều quan trọng: MetadataPointer phải được khởi tạo trước mint
+    ExtensionType.TokenMetadata, // Nếu dùng TokenMetadata trực tiếp thay vì MetadataPointer
+    ExtensionType.NonTransferable
+  ];
+  
+  // Một số extension phải khởi tạo sau khi khởi tạo mint
+  const afterMintInit = [
+    ExtensionType.TransferHook,
+    ExtensionType.InterestBearingConfig,
+    ExtensionType.CpiGuard,
+    ExtensionType.PermanentDelegate,
+    ExtensionType.NonTransferableAccount
+  ];
+  
+  // Sắp xếp các extension theo thứ tự tối ưu
+  const beforeMint: ExtensionType[] = [];
+  const afterMint: ExtensionType[] = [];
+  
+  for (const extensionType of extensionTypes) {
+    if (beforeMintInit.includes(extensionType)) {
+      beforeMint.push(extensionType);
+    } else if (afterMintInit.includes(extensionType)) {
+      afterMint.push(extensionType);
+    } else {
+      // Mặc định: thêm vào trước khi khởi tạo mint
+      beforeMint.push(extensionType);
+    }
+  }
+  
+  // Trả về mảng đã sắp xếp với các extension trước mint đi trước
+  return [...beforeMint, ...afterMint];
 } 

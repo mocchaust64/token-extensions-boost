@@ -1,157 +1,161 @@
-# Solana Token Extension SDK Examples
+# Solana Token Extension Boost - Examples
 
-This directory contains examples of how to use the Solana Token Extension SDK in real-world scenarios.
+Thư mục này chứa các ví dụ về cách sử dụng SDK Solana Token Extension Boost để làm việc với các extension của Solana Token 2022.
 
-## Installation
+## Cấu trúc thư mục
 
-Before running the examples, make sure you have installed the dependencies:
+Mỗi extension có thư mục riêng với mã nguồn và tài liệu hướng dẫn:
+
+- **[transfer-fee](./transfer-fee/)** - Ví dụ về tạo token với khả năng tính phí chuyển khoản tự động
+- **[confidential-transfer](./confidential-transfer/)** - Ví dụ về token với chuyển khoản bí mật
+- **[metadata-pointer](./metadata-pointer/)** - Ví dụ về token với metadata phong phú
+- **[immutable-owner](./immutable-owner/)** - Ví dụ về token account với owner không thể thay đổi
+- **[permanent-delegate](./permanent-delegate/)** - Ví dụ về token với khả năng kiểm soát bởi permanent delegate
+
+## Cách chạy ví dụ
+
+Mỗi thư mục ví dụ chứa file `index.ts` có thể chạy độc lập. Để chạy một ví dụ:
 
 ```bash
+# Di chuyển vào thư mục của extension bạn muốn thử
+cd transfer-fee
+
+# Cài đặt dependencies
 npm install
+
+# Chạy ví dụ
+npx ts-node index.ts
 ```
 
-## Transfer Fee Extension Examples
+## Yêu cầu
 
-The SDK provides two examples that demonstrate how to create and use tokens with the Transfer Fee extension:
+- Node.js 14+ và npm
+- Solana CLI Tools (để tạo ví trên Solana devnet)
+- Ví Solana với một số SOL trên devnet
 
-### 1. basic-transfer-fee-example.ts
+## Cách thiết lập môi trường
 
-A basic example illustrating the core features of the Transfer Fee extension with a single recipient.
+1. **Cài đặt Solana CLI Tools**:
+   ```
+   sh -c "$(curl -sSfL https://release.solana.com/v1.17.5/install)"
+   ```
 
-#### Features Demonstrated
+2. **Tạo ví Solana**:
+   ```
+   solana-keygen new
+   ```
 
-- Creating a token with 1% transfer fee
-- Minting tokens to an address
-- Transferring tokens with automatic fee deduction
-- Harvesting fees from recipient accounts to the mint
-- Withdrawing fees from the mint to a destination account
+3. **Chuyển sang devnet**:
+   ```
+   solana config set --url devnet
+   ```
 
-#### How to Run
+4. **Airdrop SOL cho ví**:
+   ```
+   solana airdrop 1
+   ```
+
+## Giải thích Token-2022 Extensions
+
+### Transfer Fee
+
+Extension này cho phép token tự động thu phí khi được chuyển, mở ra khả năng tạo tokenomics phức tạp và mô hình doanh thu đa dạng.
+
+### Confidential Transfer
+
+Extension này cho phép thực hiện các giao dịch bí mật không tiết lộ số lượng, tăng cường quyền riêng tư cho người dùng token.
+
+### Metadata Pointer
+
+Extension này lưu trữ và quản lý metadata phong phú cho token, cho phép token chứa thông tin và thuộc tính bổ sung.
+
+### Immutable Owner
+
+Extension này đảm bảo rằng owner của tài khoản token không thể thay đổi, tăng cường bảo mật chống lại các cuộc tấn công chiếm đoạt.
+
+### Permanent Delegate
+
+Extension này cho phép chỉ định một địa chỉ có khả năng chuyển token từ bất kỳ tài khoản nào mà không cần sự đồng ý, hữu ích cho các token cần khả năng thu hồi.
+
+## Tích hợp với dự án của bạn
+
+```javascript
+// Cài đặt SDK
+npm install solana-token-extension-boost
+
+// Import extension bạn cần
+import { TransferFeeToken } from "solana-token-extension-boost";
+
+// Sử dụng extension
+const token = await TransferFeeToken.create(
+  connection,
+  payer,
+  {
+    decimals: 9,
+    mintAuthority: mintAuthority.publicKey,
+    transferFeeConfig: {
+      feeBasisPoints: 100, // 1%
+      maxFee: BigInt(1000000000),
+      transferFeeConfigAuthority,
+      withdrawWithheldAuthority
+    }
+  }
+);
+``` 
+
+## Token Extension Examples
+
+This directory contains examples for using the Token Extension Boost SDK with various token extensions.
+
+### Available Examples
+
+- **Transfer Fee**: Examples showing how to create and use tokens with transfer fees
+  - Create a token with transfer fee
+  - Withdraw withheld fees
+  - Transfer tokens with fees
+
+- **Metadata**: Examples showing how to create tokens with embedded metadata
+  - Create a token with metadata (new simplified API)
+  - Read and update token metadata
+  - Create NFTs with rich metadata
+
+- **Non-transferable**: Examples showing how to create non-transferable tokens (soulbound tokens)
+  - Create a non-transferable token
+  - Mint non-transferable tokens to an account
+  - Verify non-transferable properties
+
+- **Multi-extension Examples**: Examples showing how to create tokens with multiple extensions
+  - Create a token with both transfer fee and metadata
+  - Create a token with metadata and non-transferable extension
+  - Create a token with transfer hook and metadata
+
+### Running the Examples
+
+To run an example, use the following commands:
 
 ```bash
-# Build SDK
+# Install dependencies
+npm install
+
+# Build the SDK
 npm run build
 
-# Run example
-npx ts-node examples/basic-transfer-fee-example.ts
+# Run a specific example
+npx ts-node examples/non-transferable/create-non-transferable-token.ts
 ```
 
-### 2. multi-account-transfer-fee-example.ts
+### Prerequisites
 
-An advanced example illustrating how to handle multiple recipients and find/collect fees from multiple accounts.
+- Node.js and npm installed
+- A Solana wallet (will be generated if not available)
+- SOL in your wallet for transactions (examples will try to airdrop on devnet)
 
-#### Features Demonstrated
+### Using the Examples as Reference
 
-- Creating a token with 1% transfer fee
-- Minting tokens to the owner
-- Transferring tokens to multiple recipients
-- Finding accounts with withheld fees
-- Harvesting fees from accounts and withdrawing them to the owner
+These examples demonstrate common patterns for working with Token Extensions:
 
-#### How to Run
-
-```bash
-# Build SDK
-npm run build
-
-# Run example
-npx ts-node examples/multi-account-transfer-fee-example.ts
-```
-
-### 3. transfer-fee-with-metadata-example.ts
-
-An example demonstrating how to combine Transfer Fee and Metadata Pointer extensions in a single token.
-
-#### Features Demonstrated
-
-- Creating a token with both Transfer Fee and Metadata Pointer extensions
-- Setting up token metadata with name, symbol, URI, and additional custom fields
-- Minting tokens to the owner
-- Transferring tokens with automatic fee deduction
-- Harvesting fees from recipient accounts to the mint
-- Withdrawing fees from the mint to a destination account
-- Updating metadata fields after token creation
-
-#### How to Run
-
-```bash
-# Build SDK
-npm run build
-
-# Run example
-npx ts-node examples/transfer-fee-with-metadata-example.ts
-```
-
-## Metadata Pointer Extension Example
-
-The SDK also provides an example for working with the Metadata Pointer extension:
-
-### metadata-pointer-example.ts
-
-This example demonstrates how to create and manage tokens with metadata.
-
-#### Features Demonstrated
-
-- Creating a token with metadata pointer extension
-- Setting token metadata (name, symbol, URI)
-- Adding custom metadata fields
-- Retrieving token metadata
-- Updating metadata fields
-- Removing metadata fields
-- Updating metadata authority
-- Testing updates with new authority
-
-#### How to Run
-
-```bash
-npx ts-node examples/metadata-pointer-example.ts
-```
-
-## Requirements
-
-- Solana CLI connection: `solana config set --url devnet`
-- Account with SOL on devnet: `solana airdrop 1 <wallet address> --url devnet`
-
-## Sample Output
-
-When running the basic example successfully, you will see output similar to the following:
-
-```
-Using wallet: 5YourWalletAddressHere123456789
-Balance: 1.5 SOL
-
-1. Creating token with 1% transfer fee
-Token created: TokenAddressHere123456789
-
-2. Minting tokens to owner
-Minted 1000 tokens to TokenAccountAddressHere123456789
-
-Recipient: RecipientAddressHere123456789
-Recipient token account: RecipientTokenAccountHere123456789
-
-3. Transferring tokens with 1% fee
-Expected fee: 1 tokens
-Transferred 100 tokens
-Transaction: https://explorer.solana.com/tx/TransactionSignatureHere123456789?cluster=devnet
-
-4. Harvesting fees from accounts to mint
-Fees harvested to mint
-Transaction: https://explorer.solana.com/tx/HarvestTransactionSignatureHere123456789?cluster=devnet
-
-5. Withdrawing fees from mint to wallet
-Fees withdrawn to FeeRecipientTokenAccountHere123456789
-Transaction: https://explorer.solana.com/tx/WithdrawTransactionSignatureHere123456789?cluster=devnet
-
-===== SUMMARY =====
-- Token Address: TokenAddressHere123456789
-- Owner Token Account: TokenAccountAddressHere123456789
-- Recipient Token Account: RecipientTokenAccountHere123456789
-- View details on Solana Explorer (devnet):
-  https://explorer.solana.com/address/TokenAddressHere123456789?cluster=devnet
-```
-
-## Notes
-
-- These examples use the Solana devnet by default
-- The examples attempt to use your Solana CLI wallet at the default location (~/.config/solana/id.json)
-- If a wallet is not found, the examples will generate a new keypair and request an airdrop 
+1. Connect to a Solana cluster
+2. Create a new token with specific extensions
+3. Initialize the extensions with appropriate parameters
+4. Interact with the token based on its extension features
+5. Query and display information about the token and its extensions 
