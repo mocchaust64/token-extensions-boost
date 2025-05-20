@@ -53,11 +53,7 @@ export type MetadataUpdateResult = {
   metadata: TokenMetadata;
 };
 
-/**
- * Class hỗ trợ tạo và quản lý token với TokenMetadata extension
- * Extension này lưu trữ metadata trực tiếp trong mint account
- * và luôn đi kèm với MetadataPointer trỏ đến chính nó
- */
+
 export class TokenMetadataToken extends Token {
   private metadata: MetadataConfig;
 
@@ -70,16 +66,12 @@ export class TokenMetadataToken extends Token {
     this.metadata = metadata;
   }
 
-  /**
-   * Lấy địa chỉ của mint account
-   */
+ 
   getMintAddress(): PublicKey {
     return this.mint;
   }
 
-  /**
-   * Tạo token mới với TokenMetadata extension
-   */
+
   static async create(
     connection: Connection,
     payer: Keypair,
@@ -91,7 +83,7 @@ export class TokenMetadataToken extends Token {
   ): Promise<TokenMetadataToken> {
     const { decimals, mintAuthority, metadata } = params;
     
-    // Kiểm tra ràng buộc của metadata
+ 
     if (!metadata.name || metadata.name.length > 32) {
       throw new Error("Metadata name is required and must be 32 characters or less");
     }
@@ -103,12 +95,10 @@ export class TokenMetadataToken extends Token {
     if (!metadata.uri || metadata.uri.length > 200) {
       throw new Error("Metadata URI is required and must be 200 characters or less");
     }
-    
-    // Tạo keypair cho mint account
+
     const mintKeypair = Keypair.generate();
     const mint = mintKeypair.publicKey;
-    
-    // Chuẩn bị dữ liệu metadata
+
     const tokenMetadata: TokenMetadata = {
       mint: mint,
       name: metadata.name,
@@ -120,21 +110,15 @@ export class TokenMetadataToken extends Token {
     };
 
     try {
-      // Tính toán kích thước cần thiết
+
       const metadataExtension = TYPE_SIZE + LENGTH_SIZE; // 4 bytes
       const metadataLen = pack(tokenMetadata).length;
       const mintLen = getMintLen([ExtensionType.MetadataPointer]);
-      
-      // Thêm padding cho metadata và cập nhật trong tương lai (tăng lên nhiều hơn)
       const totalSize = mintLen + metadataExtension + metadataLen + 2048;
-      
       console.log(`Kích thước mint: ${mintLen} bytes, metadata: ${metadataLen} bytes, extension: ${metadataExtension} bytes, tổng: ${totalSize} bytes`);
       
-      // Tính lamports cần thiết
       const lamports = await connection.getMinimumBalanceForRentExemption(totalSize);
-      
-      // TRANSACTION 1: Chỉ tạo account
-      console.log("Bước 1: Tạo account...");
+      console.log("step 1: create account...");
       
       const createAccountTx = new Transaction().add(
         SystemProgram.createAccount({
@@ -153,20 +137,16 @@ export class TokenMetadataToken extends Token {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Transaction tạo account thành công: ${createAccountSignature.substring(0, 16)}...`);
-      console.log(`Explorer: https://explorer.solana.com/tx/${createAccountSignature}?cluster=devnet`);
-      
-      // Chờ đủ lâu để đảm bảo transaction được xác nhận
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      // TRANSACTION 2: Chỉ khởi tạo MetadataPointer
-      console.log("Bước 2: Khởi tạo MetadataPointer...");
+      console.log(`Transaction succested : ${createAccountSignature.substring(0, 16)}...`);
+      console.log(`Explorer: https://explorer.solana.com/tx/${createAccountSignature}?cluster=devnet`);   
+      await new Promise(resolve => setTimeout(resolve, 2500));   
+      console.log("step 2: create MetadataPointer...");
       
       const initPointerTx = new Transaction().add(
         createInitializeMetadataPointerInstruction(
           mint,
           payer.publicKey,
-          null, // Khởi tạo với null, sẽ cập nhật sau
+          null, 
           TOKEN_2022_PROGRAM_ID
         )
       );
@@ -178,21 +158,17 @@ export class TokenMetadataToken extends Token {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Transaction khởi tạo MetadataPointer thành công: ${initPointerSignature.substring(0, 16)}...`);
+      console.log(`Transaction create MetadataPointer succesed: ${initPointerSignature.substring(0, 16)}...`);
       console.log(`Explorer: https://explorer.solana.com/tx/${initPointerSignature}?cluster=devnet`);
-      
-      // Chờ đủ lâu để đảm bảo transaction được xác nhận
       await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      // TRANSACTION 3: Chỉ khởi tạo Mint
-      console.log("Bước 3: Khởi tạo Mint...");
+      console.log("step 3: create Mint...");
       
       const initMintTx = new Transaction().add(
         createInitializeMintInstruction(
           mint,
           decimals,
           mintAuthority,
-          null, // Freeze Authority
+          null, 
           TOKEN_2022_PROGRAM_ID
         )
       );

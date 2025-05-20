@@ -1,7 +1,4 @@
-/**
- * Kiểm tra tính tương thích giữa các extension
- * Script này sẽ thử tạo token với các cặp extension khác nhau để xác định những cặp tương thích
- */
+
 
 import {
   Connection,
@@ -12,7 +9,7 @@ import {
 import { ExtensionType } from '@solana/spl-token';
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from '../../src/utils/token-builder';
+import { TokenBuilder } from 'solana-token-extension-boost';
 
 // Extension pairs to test
 const extensionPairsToTest = [
@@ -47,16 +44,14 @@ const extensionPairsToTest = [
   }
 ];
 
-/**
- * Kiểm tra tính tương thích của các extension
- */
+
 function checkExtensionCompatibility(extensionTypes: ExtensionType[]): {
   isCompatible: boolean;
   reason?: string;
 } {
   const incompatiblePairs: [ExtensionType, ExtensionType][] = [];
   
-  // Kiểm tra các cặp không tương thích
+ 
   if (extensionTypes.includes(ExtensionType.NonTransferable)) {
     if (extensionTypes.includes(ExtensionType.TransferFeeConfig)) {
       incompatiblePairs.push([ExtensionType.NonTransferable, ExtensionType.TransferFeeConfig]);
@@ -95,9 +90,6 @@ function checkExtensionCompatibility(extensionTypes: ExtensionType[]): {
   return { isCompatible: true };
 }
 
-/**
- * Kiểm tra tương thích của các extension
- */
 function checkExtensionCompatibilityTest(connection: Connection) {
   console.log("Checking extension compatibility:");
   
@@ -112,9 +104,7 @@ function checkExtensionCompatibilityTest(connection: Connection) {
   }
 }
 
-/**
- * Thử tạo token với từng cặp extension
- */
+
 async function testExtensionPairs() {
   const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
 
@@ -139,7 +129,6 @@ async function testExtensionPairs() {
     return;
   }
 
-  // Kiểm tra tương thích lý thuyết
   checkExtensionCompatibilityTest(connection);
 
   console.log("\nToken creation test results:");
@@ -148,18 +137,17 @@ async function testExtensionPairs() {
     try {
       const tokenBuilder = new TokenBuilder(connection);
       tokenBuilder.setTokenInfo(9, payer.publicKey);
-      
-      // Thêm NonTransferable
+
       if (pair.extensions.includes(ExtensionType.NonTransferable)) {
         tokenBuilder.addNonTransferable();
       }
       
-      // Thêm PermanentDelegate
+
       if (pair.extensions.includes(ExtensionType.PermanentDelegate)) {
         tokenBuilder.addPermanentDelegate(payer.publicKey);
       }
       
-      // Thêm TransferFee
+
       if (pair.extensions.includes(ExtensionType.TransferFeeConfig)) {
         tokenBuilder.addTransferFee(
           100, // 1%
@@ -169,13 +157,13 @@ async function testExtensionPairs() {
         );
       }
       
-      // Thêm TransferHook
+ 
       if (pair.extensions.includes(ExtensionType.TransferHook)) {
         const hookProgramId = Keypair.generate().publicKey;
         tokenBuilder.addTransferHook(hookProgramId);
       }
       
-      // Thêm TokenMetadata
+  
       if (pair.extensions.includes(ExtensionType.MetadataPointer)) {
         tokenBuilder.addTokenMetadata(
           "Test Token",
@@ -188,7 +176,7 @@ async function testExtensionPairs() {
         );
       }
       
-      // Tạo token với API mới
+    
       const { mint, token } = await tokenBuilder.createToken(payer);
       
       console.log(`✅ ${pair.name}: Success! Token: ${mint.toString()}`);

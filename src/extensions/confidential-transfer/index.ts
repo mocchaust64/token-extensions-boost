@@ -14,12 +14,7 @@ import {
 } from "@solana/spl-token";
 import { Token } from "../../core/token";
 
-/**
- * Extension for handling confidential transfers on Solana Token-2022
- * 
- * This class provides functionality to create and manage tokens with confidential
- * transfer capabilities, including account configuration and secure transfers.
- */
+
 export class ConfidentialTransferToken extends Token {
   /**
    * Create a new ConfidentialTransferToken instance
@@ -55,13 +50,12 @@ export class ConfidentialTransferToken extends Token {
   ): Promise<ConfidentialTransferToken> {
     const { decimals, mintAuthority, freezeAuthority = null, autoEnable = true } = options;
 
-    // Include the ConfidentialTransferMint extension when calculating mint length
+  
     const mintLen = getMintLen([ExtensionType.ConfidentialTransferMint]);
     const mintKeypair = Keypair.generate();
     const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
     const transaction = new Transaction();
 
-    // Create the token mint account
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -72,18 +66,7 @@ export class ConfidentialTransferToken extends Token {
       })
     );
 
-    // Note: In a real implementation, we would use:
-    // createInitializeConfidentialTransferMintInstruction(
-    //   mintKeypair.publicKey,
-    //   payer.publicKey,  // Authority to modify confidential transfer settings
-    //   autoEnable,       // Whether confidential transfers are auto-enabled
-    //   TOKEN_2022_PROGRAM_ID
-    // )
-    
-    // This can be implemented once the full instruction is available in @solana/spl-token
-    // For now, this is a placeholder for demonstration purposes
-    
-    // Initialize the mint with the standard parameters
+  
     transaction.add(
       createInitializeMintInstruction(
         mintKeypair.publicKey,
@@ -123,7 +106,6 @@ export class ConfidentialTransferToken extends Token {
 
     const transaction = new Transaction();
 
-    // Create the token account if it doesn't exist
     try {
       await this.connection.getAccountInfo(tokenAccount);
     } catch (error) {
@@ -138,13 +120,6 @@ export class ConfidentialTransferToken extends Token {
       );
     }
 
-    // Note: In a real implementation, we would add:
-    // createConfigureConfidentialTransferAccountInstruction(
-    //   tokenAccount,
-    //   owner.publicKey,
-    //   // Additional parameters as required
-    //   TOKEN_2022_PROGRAM_ID
-    // )
     
     try {
       return await sendAndConfirmTransaction(
@@ -177,10 +152,9 @@ export class ConfidentialTransferToken extends Token {
     const transaction = new Transaction();
 
     try {
-      // Check if accounts are configured for confidential transfers
       const sourceConfigured = await this.isConfiguredForConfidentialTransfers(source);
       const destConfigured = await this.isConfiguredForConfidentialTransfers(destination);
-      
+  
       if (!sourceConfigured) {
         throw new Error("Source account is not configured for confidential transfers");
       }
@@ -189,19 +163,8 @@ export class ConfidentialTransferToken extends Token {
         throw new Error("Destination account is not configured for confidential transfers");
       }
 
-      // Generate proof for the confidential transfer
       const proof = await this.generateProof(amount, source, destination);
       
-      // Note: In a real implementation, we would use a specialized instruction:
-      // createConfidentialTransferInstruction(
-      //   source,
-      //   destination,
-      //   owner.publicKey,
-      //   proof,
-      //   TOKEN_2022_PROGRAM_ID
-      // )
-      
-      // For now, we're using a standard transfer instruction as a placeholder
       transaction.add(
         createTransferInstruction(
           source,
@@ -239,15 +202,11 @@ export class ConfidentialTransferToken extends Token {
     amount: bigint
   ): Promise<string> {
     try {
-      // Check if the destination is configured for confidential transfers
       const isConfigured = await this.isConfiguredForConfidentialTransfers(destination);
       
       if (!isConfigured) {
         throw new Error("Destination account is not configured for confidential transfers");
       }
-
-      // For standard minting, we use the mintTo function
-      // In a full implementation, this would be a specialized instruction
       return await mintTo(
         this.connection,
         payer,
@@ -277,13 +236,6 @@ export class ConfidentialTransferToken extends Token {
       if (!accountInfo) {
         return false;
       }
-
-      // In a real implementation, we would check for the ConfidentialTransferAccount extension
-      // This is a placeholder that always returns true for demonstration purposes
-      
-      // const extensionData = getExtensionData(accountInfo.data, ExtensionType.ConfidentialTransferAccount);
-      // return extensionData !== null;
-      
       return true;
     } catch (error) {
       return false;
@@ -304,18 +256,9 @@ export class ConfidentialTransferToken extends Token {
     try {
       const transaction = new Transaction();
       
-      // Note: In a real implementation, we would use:
-      // createApplyProofInstruction(
-      //   destination,
-      //   this.mint,
-      //   proofData,
-      //   TOKEN_2022_PROGRAM_ID
-      // )
+     
       
-      // This is a placeholder transaction that doesn't actually do anything
-      // It would need to be replaced with the actual instruction when implemented
-      
-      const payer = Keypair.generate(); // This would typically be provided by the caller
+      const payer = Keypair.generate();
       return await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -340,15 +283,7 @@ export class ConfidentialTransferToken extends Token {
     source: PublicKey, 
     destination: PublicKey
   ): Promise<Buffer> {
-    // This is a placeholder implementation
-    // In a real system, this would use zero-knowledge proof cryptography
-    // such as bulletproofs or zk-SNARKs to create a valid proof
-    
-    // For now, we just create a dummy buffer
     const dummyProof = Buffer.alloc(64);
-    
-    // In a real implementation, this would generate a cryptographic proof
-    // that proves the sender knows the amount without revealing it
     dummyProof.write(source.toBase58().slice(0, 32), 0);
     dummyProof.write(destination.toBase58().slice(0, 32), 32);
     
@@ -376,13 +311,11 @@ export class ConfidentialTransferToken extends Token {
 
       const transaction = new Transaction();
 
-      // Check if account already exists
       let accountExists = false;
       try {
         await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
         accountExists = true;
       } catch (error) {
-        // Account doesn't exist, create it
         transaction.add(
           createAssociatedTokenAccountInstruction(
             payer.publicKey,
@@ -394,18 +327,12 @@ export class ConfidentialTransferToken extends Token {
         );
       }
 
-      // If account exists but is not configured for confidential transfers,
-      // we would add the configuration instruction here
       if (accountExists) {
         const isConfigured = await this.isConfiguredForConfidentialTransfers(tokenAccount);
         if (!isConfigured) {
-          // Note: In a real implementation, we would add:
-          // createConfigureConfidentialTransferAccountInstruction(...)
+      
         }
       } else {
-        // If we're creating a new account, we would add the configuration instruction here
-        // Note: In a real implementation, we would add:
-        // createConfigureConfidentialTransferAccountInstruction(...)
       }
 
       const signature = await sendAndConfirmTransaction(

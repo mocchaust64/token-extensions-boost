@@ -1,45 +1,24 @@
 import { Connection, Keypair } from "@solana/web3.js";
 import * as fs from "fs";
 import * as path from "path";
-import { TokenBuilder } from "../../src/utils/token-builder";
-import { TransferHookToken } from "../../src/extensions/transfer-hook";
+import { TransferHookToken,TokenBuilder } from "solana-token-extension-boost";
 
 async function main() {
   const connection = new Connection("https://api.devnet.solana.com", "confirmed");
-  
-  let payer: Keypair;
   const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
-  
-  try {
-    const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    payer = Keypair.fromSecretKey(secretKey);
-  } catch (error) {
-    payer = Keypair.generate();
-    
-    const airdropSignature = await connection.requestAirdrop(
-      payer.publicKey,
-      2 * 10 ** 9
-    );
-    await connection.confirmTransaction(airdropSignature);
-  }
+  const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
+  const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+  const payer = Keypair.fromSecretKey(secretKey);
 
   // Step 1: Create token with Transfer Hook
-  const dummyTransferHookProgram = Keypair.generate();
-  
+  const dummyTransferHookProgram = Keypair.generate();  
   const tokenBuilder = new TokenBuilder(connection)
     .setTokenInfo(9, payer.publicKey)
     .addTransferHook(dummyTransferHookProgram.publicKey);
-  
-  const { mint, token } = await tokenBuilder.createToken(payer);
-  
-  console.log(`Token created with mint: ${mint.toString()}`);
-  
+  const {mint} = await tokenBuilder.createToken(payer);
   const transferHookToken = new TransferHookToken(connection, mint, dummyTransferHookProgram.publicKey);
-  
   // Step 2: Mint tokens to owner
   const mintAmount = BigInt(100_000_000_000); // 100 tokens
-  
   const ownerTokenAccount = await transferHookToken.createAccountAndMintTo(
     payer.publicKey,
     payer,
@@ -82,7 +61,7 @@ async function main() {
       .addTokenMetadata(
         "Hook Token",
         "HOOK",
-        "https://example.com/metadata/hook-token.json",
+        "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/DeveloperPortal/metadata.json",
         {
           "description": "Token with transfer hook and metadata extensions",
           "creator": payer.publicKey.toString(),

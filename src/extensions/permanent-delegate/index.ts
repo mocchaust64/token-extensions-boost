@@ -199,8 +199,7 @@ export class PermanentDelegateToken extends Token {
   async isPermanentDelegate(address: PublicKey): Promise<boolean> {
     try {
       const mintInfo = await getMint(this.connection, this.mint, "recent", TOKEN_2022_PROGRAM_ID);
-      
-      // Kiểm tra xem permanentDelegate có tồn tại không
+  
       if (!mintInfo.permanentDelegate) {
         console.log("Permanent delegate không tồn tại cho token này");
         return false;
@@ -209,7 +208,6 @@ export class PermanentDelegateToken extends Token {
       return mintInfo.permanentDelegate.equals(address);
     } catch (error: any) {
       console.error(`Lỗi khi kiểm tra permanent delegate: ${error.message || String(error)}`);
-      // Trả về false thay vì throw error để đảm bảo mã không bị gián đoạn
       return false;
     }
   }
@@ -225,7 +223,6 @@ export class PermanentDelegateToken extends Token {
       return mintInfo.permanentDelegate || null;
     } catch (error: any) {
       console.error(`Lỗi khi lấy permanent delegate: ${error.message || String(error)}`);
-      // Trả về null thay vì throw error để đảm bảo mã không bị gián đoạn
       return null;
     }
   }
@@ -273,30 +270,4 @@ export class PermanentDelegateToken extends Token {
     }
   }
 
-  /**
-   * Usage guide for PermanentDelegateToken:
-   * 
-   * 1. Create token with permanent delegate:
-   *    const token = await PermanentDelegateToken.create(connection, payer, {
-   *      decimals: 9,
-   *      mintAuthority: mintAuthorityPublicKey,
-   *      permanentDelegate: delegatePublicKey
-   *    });
-   * 
-   * 2. Create account for the token:
-   *    const tokenAccount = await token.createTokenAccount(payer, ownerPublicKey);
-   * 
-   * 3. Transfer tokens as permanent delegate:
-   *    await token.transferAsDelegate(
-   *      delegateKeypair, 
-   *      sourceAccount, 
-   *      destinationAccount, 
-   *      1000000n
-   *    );
-   * 
-   * Real-world applications: Permanent delegates are useful for scenarios such as:
-   * - Educational tokens that can be revoked
-   * - Governance tokens that require administrative control
-   * - Compliance tokens that allow regulator intervention
-   */
 } 

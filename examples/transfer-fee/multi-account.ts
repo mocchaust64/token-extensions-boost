@@ -1,34 +1,16 @@
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { TransferFeeToken } from "../../src/extensions/transfer-fee";
+import { clusterApiUrl, Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { TransferFeeToken } from "solana-token-extension-boost";
 import * as fs from "fs";
 import * as path from "path";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 
 async function main() {
-  const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+  const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+  const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
+  const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+  const payer = Keypair.fromSecretKey(secretKey);
   
-  let payer: Keypair;
-  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
-  
-  try {
-    const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    payer = Keypair.fromSecretKey(secretKey);
-    console.log(`Using wallet: ${payer.publicKey.toString()}`);
-  } catch (error) {
-    console.log("Wallet not found, creating new one...");
-    payer = Keypair.generate();
-    console.log(`Created new wallet: ${payer.publicKey.toString()}`);
-  }
-  
-  const balance = await connection.getBalance(payer.publicKey);
-  console.log(`Balance: ${balance / 1e9} SOL`);
-  
-  if (balance < 1e9) {
-    console.log("At least 1 SOL is required to run this example");
-    console.log("Use command: solana airdrop 1 <wallet address> --url devnet");
-    return;
-  }
   
   const mintAuthority = payer;
   const transferFeeConfigAuthority = payer;
@@ -41,7 +23,7 @@ async function main() {
     payer,
     {
       decimals: 9,
-      mintAuthority: payer.publicKey,
+      mintAuthority: mintAuthority.publicKey,
       transferFeeConfig: {
         feeBasisPoints: 100,
         maxFee: BigInt(10_000_000_000),
@@ -167,6 +149,7 @@ async function main() {
   console.log(`- View details on Solana Explorer (devnet):`);
   console.log(`  https://explorer.solana.com/address/${mintAddress.toString()}?cluster=devnet`);
   
+  const balance = await connection.getBalance(payer.publicKey);
   const finalBalance = await connection.getBalance(payer.publicKey);
   console.log(`\nFinal balance: ${finalBalance / 1e9} SOL (used ${(balance - finalBalance) / 1e9} SOL)`);
 }

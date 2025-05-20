@@ -12,34 +12,16 @@ import {
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from "../../src/utils/token-builder";
+import { TokenBuilder } from "solana-token-extension-boost";
 
 
 async function main() {
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-  
-  let payer: Keypair;
-  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
-  
-  try {
-    const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    payer = Keypair.fromSecretKey(secretKey);
-  } catch (error) {
-    payer = Keypair.generate();
-    
-    const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(airdropSignature, 'confirmed');
-  }
-  
-  const balance = await connection.getBalance(payer.publicKey);
-  
-  if (balance < 0.5 * LAMPORTS_PER_SOL) {
-    const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(airdropSignature, 'confirmed');
-  }
-
-  // Create parameters for extensions
+     const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+     const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
+     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+     const payer = Keypair.fromSecretKey(secretKey);
+     
   
   // 1. Transfer Fee parameters
   const transferFeeParams = {

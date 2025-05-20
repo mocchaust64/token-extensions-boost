@@ -1,12 +1,3 @@
-/**
- * Ví dụ về cách tạo và sử dụng token không thể chuyển nhượng (NonTransferable)
- * 
- * Token không thể chuyển nhượng hữu ích cho các trường hợp như:
- * - Chứng chỉ và chứng nhận
- * - Soulbound tokens (Token gắn liền với người dùng)
- * - Huy hiệu và phù hiệu
- * - Membership tokens
- */
 
 import {
   Connection,
@@ -18,8 +9,7 @@ import {
 } from '@solana/web3.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from '../../src/utils/token-builder';
-import { NonTransferableToken } from '../../src/extensions/non-transferable';
+import { NonTransferableToken,TokenBuilder } from 'solana-token-extension-boost';
 import { 
   createAssociatedTokenAccountInstruction, 
   getAssociatedTokenAddress, 
@@ -29,28 +19,12 @@ import {
 } from '@solana/spl-token';
 
 async function main() {
-  const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
-
-  let payer: Keypair;
-  const walletPath = path.join(process.env.HOME!, '.config', 'solana', 'id.json');
-  
-  try {
-    const secretKeyString = fs.readFileSync(walletPath, { encoding: 'utf8' });
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    payer = Keypair.fromSecretKey(secretKey);
-  } catch (error) {
-    payer = Keypair.generate();
-    
-    const signature = await connection.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(signature);
-  }
-
-  const balance = await connection.getBalance(payer.publicKey);
-  
-  if (balance < 0.5 * LAMPORTS_PER_SOL) {
-    console.error("Insufficient balance to perform transactions");
-    return;
-  }
+  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+     const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+     const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
+     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+     const payer = Keypair.fromSecretKey(secretKey);
+     
 
   // Create Non-Transferable Token with TokenBuilder
   const tokenBuilder = new TokenBuilder(connection)

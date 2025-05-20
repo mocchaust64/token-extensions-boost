@@ -1,8 +1,7 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import * as fs from "fs";
 import * as path from "path";
-import { TokenBuilder } from "../../src/utils/token-builder";
-import { PermanentDelegateToken } from "../../src/extensions/permanent-delegate";
+import { PermanentDelegateToken,TokenBuilder } from "solana-token-extension-boost";
 
 async function main() {
   const connection = new Connection("https://api.devnet.solana.com", "confirmed");

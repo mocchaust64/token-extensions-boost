@@ -11,48 +11,18 @@ import {
   AuthorityType, 
   setAuthority 
 } from '@solana/spl-token';
-import { TokenAccount } from '../../src/extensions/token-account';
+import { TokenAccount } from 'solana-token-extension-boost';
 import fs from 'fs';
 import path from 'path';
 
 // Hàm main
 async function main() {
-  // Kết nối đến Solana devnet
-  const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
-  
-  // Tạo hoặc load keypair
-  let payer: Keypair;
-  const keyfilePath = path.resolve('devnet-wallet.json');
-  
-  try {
-    if (fs.existsSync(keyfilePath)) {
-      // Load keypair từ file
-      const keyfileContent = JSON.parse(fs.readFileSync(keyfilePath, 'utf-8'));
-      payer = Keypair.fromSecretKey(new Uint8Array(keyfileContent));
-    } else {
-      // Tạo keypair mới
-      payer = Keypair.generate();
-      fs.writeFileSync(keyfilePath, JSON.stringify(Array.from(payer.secretKey)));
+   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+      const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+      const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
+      const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+      const payer = Keypair.fromSecretKey(secretKey);
       
-      // Request airdrop
-      console.log('Requesting airdrop of 1 SOL...');
-      const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
-      await connection.confirmTransaction(airdropSignature, 'confirmed');
-      console.log('Airdrop confirmed!');
-    }
-    
-    console.log('Using address:', payer.publicKey.toBase58());
-    
-    // Kiểm tra balance
-    const balance = await connection.getBalance(payer.publicKey);
-    console.log('Account balance:', balance / LAMPORTS_PER_SOL, 'SOL');
-    
-    if (balance < 0.5 * LAMPORTS_PER_SOL) {
-      console.log('Low balance, requesting airdrop...');
-      const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
-      await connection.confirmTransaction(airdropSignature, 'confirmed');
-      console.log('Airdrop complete!');
-    }
     
     // ============== Tạo token cho ví dụ ==============
     console.log('\n1. Tạo token mới...');
@@ -210,9 +180,7 @@ async function main() {
     
     console.log('\nVí dụ hoàn thành thành công!');
     console.log('Đã tạo 3 loại token account và chứng minh ImmutableOwner hoạt động đúng.');
-  } catch (error) {
-    console.error('Error:', error);
-  }
+  
 }
 
 // Chạy ví dụ

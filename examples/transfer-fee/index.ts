@@ -1,31 +1,19 @@
-import { Connection, Keypair } from "@solana/web3.js";
+import { clusterApiUrl, Connection, Keypair } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import * as fs from "fs";
 import * as path from "path";
-import { TokenBuilder } from "../../src/utils/token-builder";
-import { TransferFeeToken } from "../../src/extensions/transfer-fee";
+
+import { TransferFeeToken,TokenBuilder } from "solana-token-extension-boost";
 
 async function main() {
-  const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+  const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+  const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
+  const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+  const payer = Keypair.fromSecretKey(secretKey);
   
-  let payer: Keypair;
-  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
   
-  try {
-    const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    payer = Keypair.fromSecretKey(secretKey);
-  } catch (error) {
-    payer = Keypair.generate();
-  }
-  
-  const balance = await connection.getBalance(payer.publicKey);
-  
-  if (balance < 1e9) {
-    console.log("Need at least 1 SOL to run this example");
-    console.log("Use: solana airdrop 1 <wallet address> --url devnet");
-    return;
-  }
+
   
   // 1. Create token with 1% transfer fee
   const tokenBuilder = new TokenBuilder(connection)

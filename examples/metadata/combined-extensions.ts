@@ -5,7 +5,6 @@ import {
   clusterApiUrl,
 } from "@solana/web3.js";
 import {
-  ExtensionType,
   getMint,
   getTokenMetadata,
   TOKEN_2022_PROGRAM_ID,
@@ -13,62 +12,33 @@ import {
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from "../../src/utils/token-builder";
+import { TokenBuilder } from "solana-token-extension-boost";
 
 /**
  * Ví dụ tạo token với metadata và nhiều extension khác
  */
 async function main() {
-  // Kết nối đến Solana devnet
-  console.log("Kết nối đến Solana devnet...");
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-  
-  // Tạo hoặc load keypair
-  let payer: Keypair;
-  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
-  
-  try {
-    const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    payer = Keypair.fromSecretKey(secretKey);
-    console.log(`Sử dụng ví: ${payer.publicKey.toString()}`);
-  } catch (error) {
-    console.log("Không tìm thấy ví, đang tạo ví mới...");
-    payer = Keypair.generate();
-    console.log(`Đã tạo ví mới: ${payer.publicKey.toString()}`);
-    
-    // Request airdrop
-    console.log('Đang yêu cầu airdrop 1 SOL...');
-    const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(airdropSignature, 'confirmed');
-    console.log('Airdrop thành công!');
-  }
-  
-  // Kiểm tra số dư
-  const balance = await connection.getBalance(payer.publicKey);
-  console.log('Số dư tài khoản:', balance / LAMPORTS_PER_SOL, 'SOL');
-  
-  if (balance < 0.5 * LAMPORTS_PER_SOL) {
-    console.log('Số dư thấp, đang yêu cầu airdrop...');
-    const airdropSignature = await connection.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL);
-    await connection.confirmTransaction(airdropSignature, 'confirmed');
-    console.log('Airdrop hoàn tất!');
-  }
+     const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+     const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
+     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+     const payer = Keypair.fromSecretKey(secretKey);
+     
 
   // Tạo token với metadata và nhiều extension
   console.log("\n===== Tạo token với metadata và nhiều extension =====");
 
   // 1. Chuẩn bị thông tin metadata
   const metadata = {
-    name: "Combined Extensions Token",
-    symbol: "COMB",
+    name: "OPOS",
+    symbol: "OPOS",
     uri: "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/DeveloperPortal/metadata.json",
+
     additionalMetadata: {
-      "description": "Token with metadata and multiple extensions: TransferFee, PermanentDelegate",
-      "creator": "Solana Token Extension SDK",
-      "website": "https://solana.com",
+         "trait_type": "Item",
+    "value": "Developer Portal"
     }
-  };
+};
 
   console.log("Đang tạo token với TokenBuilder...");
   

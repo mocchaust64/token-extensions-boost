@@ -201,25 +201,22 @@ export class NonTransferableToken extends Token {
     try {
       const mintInfo = await getMint(this.connection, this.mint, "confirmed", TOKEN_2022_PROGRAM_ID);
       
-      // Kiểm tra dữ liệu TLV để tìm extension NonTransferable
+     
       if (!mintInfo.tlvData || mintInfo.tlvData.length === 0) {
         console.log("Không có dữ liệu TLV cho mint");
         return false;
       }
       
-      // Debug: log dữ liệu TLV để kiểm tra
+  
       console.log(`Mint TLV data for ${this.mint.toBase58()}:`, mintInfo.tlvData);
       
-      // Tìm extension NonTransferable (type 8) trong dữ liệu TLV
-      const NON_TRANSFERABLE_TYPE = 8;  // ExtensionType.NonTransferable
+    
+      const NON_TRANSFERABLE_TYPE = 8; 
       
-      // Phân tích dữ liệu TLV
+      
       let offset = 0;
       while (offset < mintInfo.tlvData.length) {
-        // Đảm bảo có đủ dữ liệu để đọc type (4 bytes)
         if (offset + 4 > mintInfo.tlvData.length) break;
-        
-        // Đọc type (4 bytes)
         const type = mintInfo.tlvData.readUInt32LE(offset);
         console.log(`Found extension type: ${type}`);
         
@@ -227,12 +224,8 @@ export class NonTransferableToken extends Token {
           return true;
         }
         
-        // Đọc length (4 bytes)
         if (offset + 8 > mintInfo.tlvData.length) break;
         const length = mintInfo.tlvData.readUInt32LE(offset + 4);
-        
-        // Chuyển đến extension tiếp theo
-        // Cấu trúc: type (4 bytes) + length (4 bytes) + value (length bytes)
         offset += 8 + length;
       }
       
@@ -265,11 +258,10 @@ export class NonTransferableToken extends Token {
       const isNonTransferable = await this.isNonTransferable();
       
       if (isNonTransferable) {
-        // Nếu đây là NonTransferableToken, chúng ta không cần thử chuyển
         throw new Error("Cannot transfer NonTransferableToken: tokens are non-transferable by design");
       }
       
-      // Thực hiện chuyển token (sẽ không bao giờ chạy tới đây nếu token là NonTransferable)
+
       await transferChecked(
         this.connection,
         owner,

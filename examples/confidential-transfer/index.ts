@@ -1,29 +1,17 @@
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { clusterApiUrl, Connection, Keypair, PublicKey } from "@solana/web3.js";
 import * as fs from "fs";
 import * as path from "path";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
-import { TokenBuilder } from "../../src/utils/token-builder";
-import { ConfidentialTransferToken } from "../../src/extensions/confidential-transfer";
+import { TokenBuilder } from "solana-token-extension-boost";
+import { ConfidentialTransferToken } from "solana-token-extension-boost";
 
 async function main() {
-  const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+  const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+  const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
+  const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+  const payer = Keypair.fromSecretKey(secretKey);
   
-  let payer: Keypair;
-  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
-  
-  try {
-    const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
-    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-    payer = Keypair.fromSecretKey(secretKey);
-  } catch (error) {
-    payer = Keypair.generate();
-    
-    const airdropSignature = await connection.requestAirdrop(
-      payer.publicKey,
-      2 * 10 ** 9
-    );
-    await connection.confirmTransaction(airdropSignature);
-  }
 
   // Step 1: Create token with confidential transfer extension
   const tokenBuilder = new TokenBuilder(connection)
