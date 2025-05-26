@@ -24,8 +24,7 @@ async function main() {
       payer.publicKey, // transferFeeConfigAuthority
       payer.publicKey  // withdrawWithheldAuthority
     );
-  
-  const { mint, token } = await tokenBuilder.createToken(payer);
+  const { mint } = await tokenBuilder.createToken(payer);
   
   console.log(`Token created: ${mint.toString()}`);
   
@@ -45,7 +44,7 @@ async function main() {
     payer
   );
   
-  console.log(`Minted ${Number(mintAmount) / 1e9} tokens to ${ownerTokenAccount.toString()}`);
+  console.log(`Minted ${Number(mintAmount) / 1e9} tokens to ${ownerTokenAccount.address.toString()}`);
   
   const recipient = Keypair.generate();
   
@@ -66,7 +65,7 @@ async function main() {
   const expectedFee = transferFeeToken.calculateFee(transferAmount);
   
   const transferSignature = await transferFeeToken.transfer(
-    ownerTokenAccount,
+    ownerTokenAccount.address,
     recipientTokenAccount.address,
     payer,
     transferAmount,

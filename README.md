@@ -20,6 +20,16 @@ The SDK currently supports the following Token Extensions:
 - **Interest-Bearing**: Create tokens that accrue interest over time
 - **Multiple Extensions**: Create tokens with multiple extensions at once, including metadata
 
+## Core Token Features
+
+The base Token class now provides the following core functionality:
+
+- **Transfer**: Transfer tokens between accounts with decimal checking
+- **Burn**: Burn tokens from an account
+- **Account Management**: Create or get token accounts easily
+
+These core features work with all token extensions.
+
 ## Simplified Token Creation
 
 We've improved the token creation process with new streamlined methods:
@@ -83,6 +93,11 @@ ts-node examples/metadata/combined-extensions.ts
 ## New Features and Improvements
 
 Recent improvements to the SDK include:
+
+- **Enhanced Base Token Class**: Added core token functionality:
+  - `transfer()`: Transfer tokens between accounts
+  - `burnTokens()`: Burn tokens from an account
+  - `createOrGetTokenAccount()`: Create or get existing token accounts
 
 - **Enhanced TokenBuilder**: The `TokenBuilder` class now features new optimized methods:
   - `createTokenWithExtensions()`: For tokens with non-metadata extensions

@@ -9,7 +9,7 @@ import {
 import { ExtensionType } from '@solana/spl-token';
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from 'solana-token-extension-boost';
+import { TokenBuilder } from '../../src';
 
 // Extension pairs to test
 const extensionPairsToTest = [

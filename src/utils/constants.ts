@@ -11,3 +11,13 @@ export const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybz
 export const BASIS_POINTS_DIVISOR = 10000;
 export const MAX_FEE_BASIS_POINTS = 10000; 
 export const MAX_INTEREST_RATE = 10000; 
+
+// Các constant cho token groups
+export const TOKEN_GROUP_PROGRAM_ID = new PublicKey(
+  'GvKz32Paa9aWjMTGfEv5VxvEFxzjdnzP9Hm32Y9hhQAB'
+);
+
+// Các constant cho memo
+export const MEMO_PROGRAM_ID = new PublicKey(
+  'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'
+); 

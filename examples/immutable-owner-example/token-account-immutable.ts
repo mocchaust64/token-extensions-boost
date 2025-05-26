@@ -1,7 +1,6 @@
 import {
   Connection,
   Keypair,
-  LAMPORTS_PER_SOL,
   clusterApiUrl,
 } from '@solana/web3.js';
 import { 
@@ -11,7 +10,7 @@ import {
   AuthorityType, 
   setAuthority 
 } from '@solana/spl-token';
-import { TokenAccount } from 'solana-token-extension-boost';
+import { TokenAccount } from '../../src';
 import fs from 'fs';
 import path from 'path';
 

@@ -14,7 +14,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TokenAccount = exports.ImmutableOwnerToken = exports.NonTransferableToken = exports.ConfidentialTransferToken = exports.TransferHookToken = exports.PermanentDelegateToken = exports.TokenMetadataToken = exports.MetadataPointerToken = exports.TransferFeeToken = exports.MetadataHelper = exports.getOptimalInitializationOrder = exports.TokenAccountBuilder = exports.TokenBuilder = exports.Token = void 0;
+exports.MultiExtensionToken = exports.TokenAccount = exports.ImmutableOwnerToken = exports.NonTransferableToken = exports.ConfidentialTransferToken = exports.TransferHookToken = exports.PermanentDelegateToken = exports.TokenMetadataToken = exports.MetadataPointerToken = exports.TransferFeeToken = exports.MetadataHelper = exports.getOptimalInitializationOrder = exports.TokenAccountBuilder = exports.TokenBuilder = exports.Token = void 0;
 // Core exports
 var token_1 = require("./core/token");
 Object.defineProperty(exports, "Token", { enumerable: true, get: function () { return token_1.Token; } });
@@ -42,9 +42,11 @@ var confidential_transfer_1 = require("./extensions/confidential-transfer");
 Object.defineProperty(exports, "ConfidentialTransferToken", { enumerable: true, get: function () { return confidential_transfer_1.ConfidentialTransferToken; } });
 var non_transferable_1 = require("./extensions/non-transferable");
 Object.defineProperty(exports, "NonTransferableToken", { enumerable: true, get: function () { return non_transferable_1.NonTransferableToken; } });
-var immutable_owner_1 = require("./extensions/immutable-owner");
-Object.defineProperty(exports, "ImmutableOwnerToken", { enumerable: true, get: function () { return immutable_owner_1.ImmutableOwnerToken; } });
+var index_1 = require("./extensions/immutable-owner/index");
+Object.defineProperty(exports, "ImmutableOwnerToken", { enumerable: true, get: function () { return index_1.ImmutableOwnerToken; } });
 var token_account_1 = require("./extensions/token-account");
 Object.defineProperty(exports, "TokenAccount", { enumerable: true, get: function () { return token_account_1.TokenAccount; } });
+var multi_extension_1 = require("./extensions/multi-extension");
+Object.defineProperty(exports, "MultiExtensionToken", { enumerable: true, get: function () { return multi_extension_1.MultiExtensionToken; } });
 // Export relevant types from the main package
 __exportStar(require("./types"), exports);

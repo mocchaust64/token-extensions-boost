@@ -41,7 +41,7 @@ async function main() {
         metadata.additionalMetadata
       );
     
-    const { mint, transactionSignature } = await tokenBuilder.createToken(payer);
+    const { mint } = await tokenBuilder.createToken(payer);
     
     console.log(`Token created successfully!`);
     console.log(`Mint address: ${mint.toString()}`);

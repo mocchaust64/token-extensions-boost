@@ -1,6 +1,6 @@
 {
   "name": "solana-token-extension-boost",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "SDK for Solana Token Extensions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -37,7 +37,7 @@
     "@solana/spl-token-metadata": "^0.1.2",
     "@solana/web3.js": "^1.87.6",
     "bs58": "^6.0.0",
-    "solana-token-extension-boost": "^1.1.0"
+    "solana-token-extension-boost": "^1.1.1"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",

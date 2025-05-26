@@ -1,7 +1,6 @@
 import {
   Connection,
   Keypair,
-  LAMPORTS_PER_SOL,
   clusterApiUrl,
 } from "@solana/web3.js";
 import {
@@ -12,7 +11,7 @@ import {
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from "solana-token-extension-boost";
+import { TokenBuilder } from "../../src/utils/token-builder";
 
 /**
  * Ví dụ tạo token với metadata và nhiều extension khác
@@ -45,37 +44,22 @@ async function main() {
   // 2. Tạo TokenBuilder từ SDK
   const tokenBuilder = new TokenBuilder(connection);
   
-  // Tạo delegate keypair (cho tính năng permanent delegate)
-  const delegateKeypair = Keypair.generate();
-  console.log(`Permanent delegate address: ${delegateKeypair.publicKey.toString()}`);
   
   // 3. Cấu hình token với nhiều tính năng
   tokenBuilder
     // Thông tin cơ bản
     .setTokenInfo(6, payer.publicKey) // 6 decimals
-    
-    // Extension 1: Metadata
     .addTokenMetadata(
       metadata.name,
       metadata.symbol,
       metadata.uri,
       metadata.additionalMetadata
     )
+    .addNonTransferable();
     
-    // Extension 2: TransferFee (phí chuyển khoản 1%)
-    .addTransferFee(
-      100, // 1% (100 = 1%, vì 10000 = 100%)
-      BigInt(1000000), // maxFee (1 token với 6 decimals)
-      payer.publicKey, // transferFeeConfigAuthority
-      payer.publicKey  // withdrawWithheldAuthority
-    )
     
-    // Extension 3: PermanentDelegate (ủy quyền vĩnh viễn)
-    .addPermanentDelegate(
-      delegateKeypair.publicKey
-    );
-
-  // 4. Sử dụng phương thức mới để tạo token
+  // 4. Sử dụng phương thức để tạo token
+  // Lưu ý: Nên luôn sử dụng createToken() thay vì các phương thức khác đã bị deprecated
   const startTime = Date.now();
   
   console.log("Đang tạo token với metadata và các extension...");
@@ -180,6 +164,70 @@ async function main() {
     console.log("\nHiển thị lỗi từ mint info. Tuy nhiên, metadata đã được đọc thành công.");
     console.log("Bạn có thể kiểm tra trực tiếp trên Solana Explorer:");
     console.log(`https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+  }
+  
+  // 6. Thử chuyển token NonTransferable để kiểm tra extension
+  console.log("\n===== Thử chuyển token để kiểm tra NonTransferable =====");
+
+  try {
+    // Tạo ví đích ngẫu nhiên
+    const destinationWallet = Keypair.generate();
+    console.log(`Đang thử chuyển token từ ${payer.publicKey.toString()} đến ${destinationWallet.publicKey.toString()}`);
+    
+    // Sử dụng hàm transfer từ instance token đã tạo (đã có sẵn trong SDK)
+    const transferAmount = BigInt(1000000); // 1 token với 6 decimals
+    
+    // Trước hết cần tạo hoặc lấy source token account
+    const { address: sourceAddress } = await token.createOrGetTokenAccount(
+      payer,
+      payer.publicKey
+    );
+    
+    // Mint token vào tài khoản nguồn
+    console.log("Đang mint token vào tài khoản nguồn...");
+    await token.mintTo(
+      sourceAddress,
+      payer,
+      transferAmount
+    );
+    console.log(`Đã mint ${Number(transferAmount) / 10**6} token vào tài khoản nguồn`);
+    
+    // Tạo hoặc lấy destination token account
+    const { address: destinationAddress } = await token.createOrGetTokenAccount(
+      payer,
+      destinationWallet.publicKey
+    );
+    
+    console.log(`Đang thử chuyển ${Number(transferAmount) / 10**6} token...`);
+    
+    // Sử dụng phương thức transfer của token instance đã tạo với đầy đủ tham số
+    const transferSignature = await token.transfer(
+      sourceAddress,                // source
+      destinationAddress,           // destination
+      payer,                        // owner
+      transferAmount,               // amount
+      6                             // decimals
+    );
+    
+    console.log("Chuyển token thành công!");
+    console.log(`Transaction: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
+    console.log("⚠️ Token có thể chuyển -> NonTransferable không hoạt động hoặc không được áp dụng");
+  } catch (error) {
+    console.error("Lỗi khi chuyển token:", error);
+    
+    // Kiểm tra xem lỗi có phải do NonTransferable không
+    const errorString = error instanceof Error 
+      ? error.toString() 
+      : String(error);
+      
+    if (errorString.includes("NonTransferable") || 
+        errorString.includes("0x75") ||  // Mã lỗi NonTransferable
+        errorString.includes("non-transferable")) {
+      console.log("✅ Xác nhận: Token KHÔNG thể chuyển -> NonTransferable extension hoạt động đúng!");
+    } else {
+      console.log("❌ Lỗi khác, không liên quan đến NonTransferable:");
+      console.log(errorString);
+    }
   }
   
   console.log("\n===== TEST COMPLETE =====");

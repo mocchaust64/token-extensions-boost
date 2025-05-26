@@ -214,7 +214,6 @@ export class TransferFeeToken extends Token {
       throw new Error("Account list cannot be empty");
     }
 
-    // Xác định authority để sử dụng
     const authority = this.getWithdrawAuthority(withdrawAuthority);
     if (!authority) {
       throw new Error("Withdrawal authority is required");
@@ -256,7 +255,7 @@ export class TransferFeeToken extends Token {
       throw new Error("Account list cannot be empty");
     }
 
-    // Xác định authority để sử dụng
+
     const authority = this.getWithdrawAuthority(withdrawAuthority);
     if (!authority) {
       throw new Error("Withdrawal authority is required");
@@ -338,19 +337,19 @@ export class TransferFeeToken extends Token {
    * @private
    */
   private getWithdrawAuthority(providedAuthority?: Keypair): Keypair | null {
-    // Nếu có authority được cung cấp, sử dụng nó
+
     if (providedAuthority) {
       return providedAuthority;
     }
 
-    // Kiểm tra authority từ config
+ 
     if (this.config.withdrawWithheldAuthority) {
       if (this.config.withdrawWithheldAuthority instanceof Keypair) {
         return this.config.withdrawWithheldAuthority;
       }
     }
 
-    // Không tìm thấy authority phù hợp
+
     return null;
   }
 
@@ -361,14 +360,14 @@ export class TransferFeeToken extends Token {
    * @param payer - Transaction fee payer keypair
    * @param amount - Token amount to mint
    * @param mintAuthority - Mint authority keypair
-   * @returns Created token account address
+   * @returns Created token account address and transaction signature
    */
   async createAccountAndMintTo(
     owner: PublicKey,
     payer: Keypair,
     amount: bigint,
-    mintAuthority: Keypair
-  ): Promise<PublicKey> {
+    mintAuthority: Signer
+  ): Promise<{ address: PublicKey; signature: string }> {
     try {
       const tokenAccount = await getAssociatedTokenAddress(
         this.mint,
@@ -378,10 +377,12 @@ export class TransferFeeToken extends Token {
       );
 
       const transaction = new Transaction();
+      let accountCreated = false;
       
       try {
         await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
       } catch (error) {
+        accountCreated = true;
         transaction.add(
           createAssociatedTokenAccountInstruction(
             payer.publicKey,
@@ -404,9 +405,15 @@ export class TransferFeeToken extends Token {
 
       transaction.add(mintInstruction);
 
-      await sendAndConfirmTransaction(this.connection, transaction, [payer, mintAuthority]);
+      const signature = await sendAndConfirmTransaction(
+        this.connection, 
+        transaction, 
+        accountCreated || !(mintAuthority instanceof Keypair) ? 
+          [payer, mintAuthority] : 
+          [payer, mintAuthority instanceof Keypair ? mintAuthority : payer]
+      );
       
-      return tokenAccount;
+      return { address: tokenAccount, signature };
     } catch (error: any) {
       throw new Error(`Could not create account and mint tokens: ${error.message}`);
     }
@@ -442,7 +449,7 @@ export class TransferFeeToken extends Token {
             accountsWithFees.push(pubkey);
           }
         } catch (error) {
-          // Skip accounts with errors
+         
         }
       }
 
@@ -512,7 +519,7 @@ export class TransferFeeToken extends Token {
         const feeInfo = await this.getAccountTransferFeeInfo(account);
         totalWithheldAmount += feeInfo.withheldAmount;
       } catch (error) {
-        // Bỏ qua các tài khoản bị lỗi
+        
       }
     }
 
@@ -589,26 +596,5 @@ export class TransferFeeToken extends Token {
     }
   }
 
-  /**
-   * Usage guide for TransferFeeToken:
-   * 
-   * 1. Create a token with transfer fee extension:
-   *    const token = await TransferFeeToken.create(connection, payer, {
-   *      decimals: 9,
-   *      mintAuthority: mintAuthorityPublicKey,
-   *      transferFeeConfig: {
-   *        feeBasisPoints: 100, // 1%
-   *        maxFee: 1000000n,   // Maximum fee
-   *        transferFeeConfigAuthority: configAuthorityKeypair,
-   *        withdrawWithheldAuthority: withdrawAuthorityKeypair
-   *      }
-   *    });
-   * 
-   * 2. Transfer tokens with fee:
-   *    await token.transfer(sourceAccount, destinationAccount, owner, 1000000n, 9);
-   * 
-   * 3. Withdraw collected fees:
-   *    const accountsWithFees = await token.findAccountsWithWithheldFees();
-   *    await token.withdrawFeesFromAccounts(accountsWithFees, destinationAccount);
-   */
+ 
 } 

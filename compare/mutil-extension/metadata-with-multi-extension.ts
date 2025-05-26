@@ -33,15 +33,12 @@ async function main () {
             metadata.uri,
             metadata.additionalMetadata
         )
-
-        // add transfer fee
         .addTransferFee( 
             50,
             BigInt(500000),
             payer.publicKey,
             payer.publicKey
         )
-        // add permenant delegate
         .addPermanentDelegate(delegateKeypair.publicKey)
 
         const {mint} = await tokenBuilder.createToken(payer);

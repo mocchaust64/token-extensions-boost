@@ -40,8 +40,13 @@ async function main() {
  
     const mint = await tokenBuilder.createToken(payer);
     console.log(`Mint address: ${mint.toString()}`);
+
+    const mintTo = BigInt(1000000000000);    
+      
     
 }
+
+
 main().catch(err => {
     console.error(err);
     process.exit(1);

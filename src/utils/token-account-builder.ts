@@ -21,35 +21,35 @@ import {
 } from "@solana/spl-token";
 
 /**
- * TokenAccountBuilder - Lớp hỗ trợ tạo token account với các extension
+ * TokenAccountBuilder - Helper class for creating token accounts with extensions
  * 
- * ImmutableOwner và các extension khác cho token account
+ * ImmutableOwner and other extensions for token accounts
  */
 export class TokenAccountBuilder {
   private connection: Connection;
   private extensions: ExtensionType[] = [];
   
-  // Thông tin cơ bản
+  // Basic information
   private mint?: PublicKey;
   private owner?: PublicKey;
   
-  // Cài đặt cho các extension
+  // Settings for extensions
   private defaultAccountState?: AccountState;
   
   /**
-   * Khởi tạo builder với connection
+   * Initialize builder with connection
    * 
-   * @param connection - Connection đến Solana cluster
+   * @param connection - Connection to Solana cluster
    */
   constructor(connection: Connection) {
     this.connection = connection;
   }
   
   /**
-   * Thiết lập thông tin cơ bản cho token account
+   * Set basic information for token account
    * 
-   * @param mint - Địa chỉ mint của token
-   * @param owner - Chủ sở hữu của token account
+   * @param mint - Mint address of the token
+   * @param owner - Owner of the token account
    */
   setTokenAccountInfo(mint: PublicKey, owner: PublicKey): TokenAccountBuilder {
     this.mint = mint;
@@ -58,8 +58,8 @@ export class TokenAccountBuilder {
   }
   
   /**
-   * Thêm extension ImmutableOwner
-   * ImmutableOwner ngăn chặn việc thay đổi chủ sở hữu của token account
+   * Add ImmutableOwner extension
+   * ImmutableOwner prevents changing the owner of the token account
    */
   addImmutableOwner(): TokenAccountBuilder {
     this.extensions.push(ExtensionType.ImmutableOwner);
@@ -67,9 +67,9 @@ export class TokenAccountBuilder {
   }
   
   /**
-   * Thêm extension DefaultAccountState
+   * Add DefaultAccountState extension
    * 
-   * @param state - Trạng thái mặc định của account (frozen hoặc unlocked)
+   * @param state - Default state of the account (frozen or unlocked)
    */
   addDefaultAccountState(state: AccountState): TokenAccountBuilder {
     this.extensions.push(ExtensionType.DefaultAccountState);
@@ -78,10 +78,10 @@ export class TokenAccountBuilder {
   }
   
   /**
-   * Tạo token account thông thường (non-associated)
+   * Create standard (non-associated) token account
    * 
-   * @param payer - Người trả phí giao dịch
-   * @returns Thông tin về token account đã tạo
+   * @param payer - Transaction fee payer
+   * @returns Information about the created token account
    */
   async buildStandardAccount(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
@@ -93,25 +93,25 @@ export class TokenAccountBuilder {
     }
     
     try {
-      // 1. Tạo keypair mới cho token account
+      // 1. Create new keypair for token account
       const tokenAccountKeypair = Keypair.generate();
       const tokenAccount = tokenAccountKeypair.publicKey;
       
-      // 2. Tính kích thước account và rent
+      // 2. Calculate account size and rent
       const accountLen = getAccountLen(this.extensions);
       const lamports = await this.connection.getMinimumBalanceForRentExemption(accountLen);
       
       console.log(`Token account size: ${accountLen} bytes`);
       
-      // 3. Tạo transaction
+      // 3. Create transaction
       const transaction = new Transaction();
       
-      // Thứ tự khởi tạo đúng: 
-      // 1. Tạo account
-      // 2. Khởi tạo các extension
-      // 3. Khởi tạo token account
+      // Correct initialization order: 
+      // 1. Create account
+      // 2. Initialize extensions
+      // 3. Initialize token account
       
-      // Instruction tạo account
+      // Create account instruction
       transaction.add(
         SystemProgram.createAccount({
           fromPubkey: payer.publicKey,
@@ -122,7 +122,7 @@ export class TokenAccountBuilder {
         })
       );
       
-      // Thêm các extension
+      // Add extensions
       if (this.extensions.includes(ExtensionType.ImmutableOwner)) {
         transaction.add(
           createInitializeImmutableOwnerInstruction(
@@ -142,7 +142,7 @@ export class TokenAccountBuilder {
         );
       }
       
-      // Cuối cùng, khởi tạo token account
+      // Finally, initialize token account
       transaction.add(
         createInitializeAccountInstruction(
           tokenAccount,
@@ -152,7 +152,7 @@ export class TokenAccountBuilder {
         )
       );
       
-      // 4. Gửi transaction
+      // 4. Send transaction
       const transactionSignature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -175,12 +175,12 @@ export class TokenAccountBuilder {
   }
   
   /**
-   * Tạo Associated Token Account với các extension
+   * Create Associated Token Account with extensions
    * 
-   * Lưu ý: Không phải tất cả extension đều hoạt động với ATA
+   * Note: Not all extensions work with ATA
    * 
-   * @param payer - Người trả phí giao dịch
-   * @returns Thông tin về token account đã tạo
+   * @param payer - Transaction fee payer
+   * @returns Information about the created token account
    */
   async buildAssociatedAccount(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
@@ -191,7 +191,7 @@ export class TokenAccountBuilder {
     }
     
     try {
-      // 1. Lấy địa chỉ ATA
+      // 1. Get ATA address
       const tokenAccount = getAssociatedTokenAddressSync(
         this.mint,
         this.owner,
@@ -200,11 +200,11 @@ export class TokenAccountBuilder {
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
       
-      // 2. Tạo transaction
+      // 2. Create transaction
       const transaction = new Transaction();
       
-      // Chỉ có thể thêm ATA bình thường, không thể thêm các extension trực tiếp
-      // Một số extension như ImmutableOwner được tự động áp dụng cho ATA
+      // Can only add normal ATA, cannot add extensions directly
+      // Some extensions like ImmutableOwner are automatically applied to ATA
       transaction.add(
         createAssociatedTokenAccountInstruction(
           payer.publicKey,
@@ -216,7 +216,7 @@ export class TokenAccountBuilder {
         )
       );
       
-      // 3. Gửi transaction
+      // 3. Send transaction
       const transactionSignature = await sendAndConfirmTransaction(
         this.connection,
         transaction,

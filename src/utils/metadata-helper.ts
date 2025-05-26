@@ -5,8 +5,8 @@ import {
   TOKEN_2022_PROGRAM_ID,
   LENGTH_SIZE,
   TYPE_SIZE,
-  createUpdateMetadataPointerInstruction,
   createInitializeMintInstruction,
+  createInitializeNonTransferableMintInstruction,
 } from '@solana/spl-token';
 import {
   pack,
@@ -18,22 +18,20 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
-  TransactionInstruction,
   Connection,
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
-import { getOptimalInitializationOrder } from './extension-helpers';
 
 /**
- * Helper class để xử lý metadata tốt hơn khi kết hợp với các extension khác
+ * Helper class for better handling of metadata when combined with other extensions
  */
 export class MetadataHelper {
   /**
-   * Tính toán kích thước cần thiết cho metadata
+   * Calculate the size needed for metadata
    * 
-   * @param metadata - Thông tin metadata
-   * @returns Kích thước ước tính (bytes)
+   * @param metadata - Metadata information
+   * @returns Estimated size (bytes)
    */
   static calculateMetadataSize(metadata: {
     name: string;
@@ -41,7 +39,7 @@ export class MetadataHelper {
     uri: string;
     additionalMetadata?: Record<string, string>;
   }): number {
-    // Tạo đối tượng TokenMetadata
+    // Create TokenMetadata object
     const tokenMetadata: TokenMetadata = {
       mint: PublicKey.default,
       name: metadata.name,
@@ -52,26 +50,26 @@ export class MetadataHelper {
         : [],
     };
     
-    // Pack metadata để tính kích thước thực tế
+    // Pack metadata to calculate actual size
     const packedData = pack(tokenMetadata);
     
-    // Thêm header size (TYPE_SIZE + LENGTH_SIZE)
+    // Add header size (TYPE_SIZE + LENGTH_SIZE)
     const headerSize = TYPE_SIZE + LENGTH_SIZE;
     
-    // Thêm padding để đảm bảo đủ kích thước
+    // Add padding to ensure sufficient size
     const paddingFactor = 2;
     const metadataLen = headerSize + (packedData.length * paddingFactor);
     
-    // Thêm kích thước tối thiểu để đảm bảo
+    // Add minimum size as a safeguard
     return Math.max(metadataLen, 2048);
   }
 
   /**
-   * Tính toán kích thước cần thiết cho mint account với các extension và metadata
+   * Calculate the size needed for mint account with extensions and metadata
    * 
-   * @param extensionTypes - Các loại extension cần thêm
-   * @param metadata - Thông tin metadata (nếu có)
-   * @returns Tổng kích thước cần thiết (bytes)
+   * @param extensionTypes - Types of extensions to add
+   * @param metadata - Metadata information (if any)
+   * @returns Total required size (bytes)
    */
   static calculateMintSize(
     extensionTypes: ExtensionType[],
@@ -82,37 +80,37 @@ export class MetadataHelper {
       additionalMetadata?: Record<string, string>;
     }
   ): number {
-    // Đảm bảo MetadataPointer có trong extensionTypes nếu có metadata
+    // Ensure MetadataPointer is included in extensionTypes if metadata exists
     let allExtensions = [...extensionTypes];
     if (metadata && !allExtensions.includes(ExtensionType.MetadataPointer)) {
       allExtensions.push(ExtensionType.MetadataPointer);
     }
     
-    // Tính kích thước cần thiết cho mint với các extension
+    // Calculate size needed for mint with extensions
     const mintLen = getMintLen(allExtensions);
     
-    // Nếu không có thông tin metadata
+    // If there's no metadata information
     if (!metadata) {
       return mintLen;
     }
     
-    // Tính kích thước cần thiết cho metadata
+    // Calculate size needed for metadata
     const metadataSize = this.calculateMetadataSize(metadata);
     
-    // Tổng kích thước = mint size + metadata size + thêm dự phòng
-    const totalSize = mintLen + metadataSize + 1024; // Thêm 1KB dự phòng
+    // Total size = mint size + metadata size + buffer
+    const totalSize = mintLen + metadataSize + 1024; // Add 1KB buffer
     
     return totalSize;
   }
 
   /**
-   * Tạo token với metadata tích hợp một cách đơn giản
-   * Hàm này tuân thủ đúng thứ tự khởi tạo để đảm bảo hoạt động chính xác
+   * Create token with integrated metadata in a simple way
+   * This function follows the correct initialization order to ensure proper operation
    * 
-   * @param connection - Kết nối Solana
-   * @param payer - Người trả phí
-   * @param params - Tham số khởi tạo
-   * @returns Thông tin về token đã tạo
+   * @param connection - Solana connection
+   * @param payer - Fee payer
+   * @param params - Initialization parameters
+   * @returns Information about the created token
    */
   static async createTokenWithMetadata(
     connection: Connection,
@@ -124,18 +122,19 @@ export class MetadataHelper {
       symbol: string;
       uri: string;
       additionalMetadata?: Record<string, string>;
+      extensions?: ExtensionType[];
     }
   ): Promise<{
     mint: PublicKey;
     txId: string;
   }> {
     try {
-      // Tạo keypair cho mint account
+      // Create keypair for mint account
       const mintKeypair = Keypair.generate();
       const mint = mintKeypair.publicKey;
-      console.log(`Tạo token với mint address: ${mint.toString()}`);
+      console.log(`Creating token with mint address: ${mint.toString()}`);
       
-      // Chuẩn bị metadata
+      // Prepare metadata
       const metaData: TokenMetadata = {
         updateAuthority: payer.publicKey,
         mint: mint,
@@ -147,43 +146,68 @@ export class MetadataHelper {
           : [],
       };
       
-      // Tính kích thước cho các phần
-      const metadataExtension = TYPE_SIZE + LENGTH_SIZE; // 4 bytes (2 cho type, 2 cho length)
+      // Change the size calculation method for the parts
+      const metadataExtension = TYPE_SIZE + LENGTH_SIZE;
       const metadataLen = pack(metaData).length;
-      const mintLen = getMintLen([ExtensionType.MetadataPointer]);
       
-      // Tính lamports cần thiết dựa trên tổng kích thước
+      // Create extension list to calculate correct size
+      const extensionsToUse = [ExtensionType.MetadataPointer];
+      
+      // Add other extensions if provided
+      if (params.extensions && params.extensions.length > 0) {
+        params.extensions.forEach(ext => {
+          if (!extensionsToUse.includes(ext)) {
+            extensionsToUse.push(ext);
+          }
+        });
+      }
+      
+      // Calculate size based on all extensions
+      const mintLen = getMintLen(extensionsToUse);
+      
+      console.log(`Calculating size for ${extensionsToUse.length} extensions: ${JSON.stringify(extensionsToUse.map(ext => ExtensionType[ext]))}`);
+      console.log(`Size: mint=${mintLen}, metadata extension=${metadataExtension}, metadata=${metadataLen}`);
+      
+      // Calculate required lamports based on total size
       const lamports = await connection.getMinimumBalanceForRentExemption(
         mintLen + metadataExtension + metadataLen
       );
       
-      console.log(`Kích thước: mint=${mintLen}, metadata extension=${metadataExtension}, metadata=${metadataLen}`);
-      
-      // Tạo transaction với tất cả các instruction cần thiết
+      // Create transaction with all necessary instructions
       const transaction = new Transaction();
       
-      // 1. Tạo account
+      // 1. Create account
       transaction.add(
         SystemProgram.createAccount({
           fromPubkey: payer.publicKey,
           newAccountPubkey: mint,
-          space: mintLen,  // Chỉ cần đủ cho mint với extension
-          lamports, // Nhưng cần đủ lamports cho cả metadata
+          space: mintLen,  // Only need enough for mint with extension
+          lamports, // But need enough lamports for metadata too
           programId: TOKEN_2022_PROGRAM_ID,
         })
       );
       
-      // 2. Khởi tạo MetadataPointer extension
+      // 2. Initialize MetadataPointer extension
       transaction.add(
         createInitializeMetadataPointerInstruction(
           mint,
           payer.publicKey,  // Update authority
-          mint,  // Metadata address (trỏ đến chính nó)
+          mint,  // Metadata address (points to itself)
           TOKEN_2022_PROGRAM_ID
         )
       );
       
-      // 3. Khởi tạo Mint
+      // 3. Initialize NonTransferable extension
+      if (params.extensions && params.extensions.includes(ExtensionType.NonTransferable)) {
+        transaction.add(
+          createInitializeNonTransferableMintInstruction(
+            mint,
+            TOKEN_2022_PROGRAM_ID
+          )
+        );
+      }
+      
+      // 4. Initialize Mint
       transaction.add(
         createInitializeMintInstruction(
           mint,
@@ -194,7 +218,7 @@ export class MetadataHelper {
         )
       );
       
-      // 4. Khởi tạo Metadata
+      // 5. Initialize Metadata
       transaction.add(
         createInitializeInstruction({
           programId: TOKEN_2022_PROGRAM_ID,
@@ -208,7 +232,7 @@ export class MetadataHelper {
         })
       );
       
-      // 5. Thêm các trường metadata bổ sung
+      // 6. Add additional metadata fields
       if (params.additionalMetadata) {
         for (const [key, value] of Object.entries(params.additionalMetadata)) {
           transaction.add(
@@ -223,8 +247,8 @@ export class MetadataHelper {
         }
       }
       
-      // Gửi transaction
-      console.log("Đang gửi transaction...");
+      // Send transaction
+      console.log("Sending transaction...");
       const signature = await sendAndConfirmTransaction(
         connection,
         transaction,
@@ -232,18 +256,18 @@ export class MetadataHelper {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Token tạo thành công! Transaction: ${signature}`);
+      console.log(`Token created successfully! Transaction: ${signature}`);
       
       return {
         mint,
         txId: signature
       };
     } catch (error) {
-      console.error('Lỗi khi tạo token với metadata:', error);
+      console.error('Error creating token with metadata:', error);
       
       if (error instanceof Error) {
         const errorMessage = error.message;
-        console.error('Chi tiết lỗi:', errorMessage);
+        console.error('Error details:', errorMessage);
       }
       
       throw error;
@@ -251,10 +275,10 @@ export class MetadataHelper {
   }
 
   /**
-   * Kiểm tra xem các extension có tương thích với nhau không
+   * Check if extensions are compatible with each other
    * 
-   * @param extensionTypes - Mảng các loại extension cần kiểm tra
-   * @returns Kết quả kiểm tra tương thích
+   * @param extensionTypes - Array of extension types to check
+   * @returns Compatibility check result
    */
   static checkExtensionCompatibility(extensionTypes: ExtensionType[]): {
     isCompatible: boolean;
@@ -263,9 +287,9 @@ export class MetadataHelper {
   } {
     const incompatiblePairs: [ExtensionType, ExtensionType][] = [];
     
-    // Kiểm tra các cặp không tương thích theo hướng dẫn Solana
+    // Check incompatible pairs according to Solana guidelines
     
-    // NonTransferable không tương thích với các extension liên quan đến chuyển token
+    // NonTransferable is incompatible with extensions related to token transfers
     if (extensionTypes.includes(ExtensionType.NonTransferable)) {
       if (extensionTypes.includes(ExtensionType.TransferFeeConfig)) {
         incompatiblePairs.push([ExtensionType.NonTransferable, ExtensionType.TransferFeeConfig]);
@@ -280,7 +304,7 @@ export class MetadataHelper {
       }
     }
     
-    // ConfidentialTransfer không tương thích với một số extension
+    // ConfidentialTransfer is incompatible with some extensions
     if (extensionTypes.includes(ExtensionType.ConfidentialTransferMint)) {
       if (extensionTypes.includes(ExtensionType.TransferFeeConfig)) {
         incompatiblePairs.push([ExtensionType.ConfidentialTransferMint, ExtensionType.TransferFeeConfig]);
@@ -299,16 +323,16 @@ export class MetadataHelper {
       isCompatible: incompatiblePairs.length === 0,
       incompatiblePairs: incompatiblePairs.length > 0 ? incompatiblePairs : undefined,
       reason: incompatiblePairs.length > 0 
-        ? "Một số extension không tương thích với nhau" 
+        ? "Some extensions are incompatible with each other" 
         : undefined
     };
   }
 
   /**
-   * Tạo địa chỉ metadata dựa trên mint
+   * Create metadata address based on mint
    * 
-   * @param mint - Địa chỉ của mint
-   * @returns Địa chỉ của metadata
+   * @param mint - Mint address
+   * @returns Metadata address
    */
   static findMetadataAddress(mint: PublicKey): PublicKey {
     const [metadataAddress] = PublicKey.findProgramAddressSync(
@@ -320,12 +344,12 @@ export class MetadataHelper {
   }
 
   /**
-   * Tạo thứ tự các bước để khởi tạo metadata đúng cách
+   * Create the sequence of steps to initialize metadata correctly
    * 
-   * @param mint - Địa chỉ của mint
-   * @param updateAuthority - Địa chỉ có quyền cập nhật metadata
-   * @param metadata - Thông tin metadata
-   * @returns Thứ tự các bước
+   * @param mint - Mint address
+   * @param updateAuthority - Address with authority to update metadata
+   * @param metadata - Metadata information
+   * @returns Sequence of steps
    */
   static getMetadataInstructions(
     mint: PublicKey, 
@@ -342,7 +366,7 @@ export class MetadataHelper {
   } {
     const metadataAddress = this.findMetadataAddress(mint);
     
-    // Thứ tự khởi tạo cho metadata
+    // Initialization order for metadata
     const setupOrder = [
       "1. Initialize the metadata pointer on the mint",
       "2. Initialize the metadata account itself",

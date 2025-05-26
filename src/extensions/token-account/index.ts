@@ -5,7 +5,6 @@ import {
   Transaction,
   SystemProgram,
   sendAndConfirmTransaction,
-  Signer,
 } from "@solana/web3.js";
 import {
   ExtensionType,
@@ -17,15 +16,10 @@ import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
   createAccount,
-  createInitializeAccount2Instruction,
-  createInitializeAccount3Instruction,
   AccountState,
   createInitializeDefaultAccountStateInstruction,
 } from "@solana/spl-token";
 
-/**
- * TokenAccount - Lớp hỗ trợ tạo token account với extensions
- */
 export class TokenAccount {
   connection: Connection;
   mint: PublicKey;
@@ -38,10 +32,10 @@ export class TokenAccount {
   }
   
   /**
-   * Tạo token account thông thường
    * 
-   * @param payer Người trả phí giao dịch
-   * @returns Thông tin về token account
+   * 
+   * @param payer
+   * @returns 
    */
   async createAccount(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
@@ -49,15 +43,10 @@ export class TokenAccount {
     signature: string;
   }> {
     const tokenAccountKeypair = Keypair.generate();
-    
-    // Tính kích thước account và rent
     const accountLen = getAccountLen([]);
     const lamports = await this.connection.getMinimumBalanceForRentExemption(accountLen);
-    
-    // Tạo transaction
     const transaction = new Transaction();
-    
-    // Tạo và khởi tạo account
+  
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -74,7 +63,6 @@ export class TokenAccount {
       )
     );
     
-    // Gửi transaction
     const signature = await sendAndConfirmTransaction(
       this.connection,
       transaction,
@@ -90,10 +78,10 @@ export class TokenAccount {
   }
   
   /**
-   * Tạo token account với ImmutableOwner extension
    * 
-   * @param payer Người trả phí giao dịch
-   * @returns Thông tin về token account
+   * 
+   * @param payer 
+   * @returns 
    */
   async createAccountWithImmutableOwner(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
@@ -101,15 +89,11 @@ export class TokenAccount {
     signature: string;
   }> {
     const tokenAccountKeypair = Keypair.generate();
-    
-    // Tính kích thước account và rent
     const accountLen = getAccountLen([ExtensionType.ImmutableOwner]);
     const lamports = await this.connection.getMinimumBalanceForRentExemption(accountLen);
-    
-    // Tạo transaction
     const transaction = new Transaction();
     
-    // Tạo account và khởi tạo
+ 
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -120,7 +104,7 @@ export class TokenAccount {
       })
     );
     
-    // Khởi tạo ImmutableOwner trước
+
     transaction.add(
       createInitializeImmutableOwnerInstruction(
         tokenAccountKeypair.publicKey,
@@ -128,7 +112,7 @@ export class TokenAccount {
       )
     );
     
-    // Khởi tạo account sau
+ 
     transaction.add(
       createInitializeAccountInstruction(
         tokenAccountKeypair.publicKey,
@@ -154,25 +138,24 @@ export class TokenAccount {
   }
   
   /**
-   * Tạo Associated Token Account
+   *
    * 
-   * @param payer Người trả phí giao dịch
-   * @returns Thông tin về token account
+   * @param payer 
+   * @returns 
    */
   async createAssociatedTokenAccount(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
     signature: string;
   }> {
-    // Tính địa chỉ ATA
+   
     const tokenAccount = getAssociatedTokenAddressSync(
       this.mint,
       this.owner,
-      true, // allowOwnerOffCurve
+      true, 
       TOKEN_2022_PROGRAM_ID,
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
-    
-    // Tạo transaction
+  
     const transaction = new Transaction();
     
     transaction.add(
@@ -186,7 +169,6 @@ export class TokenAccount {
       )
     );
     
-    // Gửi transaction
     const signature = await sendAndConfirmTransaction(
       this.connection,
       transaction,
@@ -201,22 +183,22 @@ export class TokenAccount {
   }
   
   /**
-   * Phương pháp tạo Account3 - sử dụng createAccount và createInitializeAccount3Instruction
    * 
-   * @param payer Người trả phí giao dịch
-   * @returns Thông tin về token account
+   * 
+   * @param payer 
+   * @returns 
    */
   async createAccountWithImmutableOwnerAlt(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
     signature: string;
   }> {
-    // Tạo account bằng createAccount helper function
+   
     const tokenAccount = await createAccount(
       this.connection,
       payer,
       this.mint,
       this.owner,
-      undefined, // keypair
+      undefined, 
       { commitment: 'confirmed' },
       TOKEN_2022_PROGRAM_ID
     );
@@ -228,11 +210,11 @@ export class TokenAccount {
   }
   
   /**
-   * Tạo token account với DefaultAccountState extension
    * 
-   * @param payer Người trả phí giao dịch
-   * @param state Trạng thái mặc định
-   * @returns Thông tin về token account
+   * 
+   * @param payer 
+   * @param state 
+   * @returns 
    */
   async createAccountWithDefaultState(payer: Keypair, state: AccountState): Promise<{
     tokenAccount: PublicKey;
@@ -240,15 +222,10 @@ export class TokenAccount {
     signature: string;
   }> {
     const tokenAccountKeypair = Keypair.generate();
-    
-    // Tính kích thước account và rent
     const accountLen = getAccountLen([ExtensionType.DefaultAccountState]);
     const lamports = await this.connection.getMinimumBalanceForRentExemption(accountLen);
-    
-    // Tạo transaction
     const transaction = new Transaction();
-    
-    // Tạo account và khởi tạo
+
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -258,8 +235,7 @@ export class TokenAccount {
         programId: TOKEN_2022_PROGRAM_ID,
       })
     );
-    
-    // Khởi tạo DefaultAccountState trước
+
     transaction.add(
       createInitializeDefaultAccountStateInstruction(
         tokenAccountKeypair.publicKey,
@@ -268,7 +244,6 @@ export class TokenAccount {
       )
     );
     
-    // Khởi tạo account sau
     transaction.add(
       createInitializeAccountInstruction(
         tokenAccountKeypair.publicKey,
@@ -278,7 +253,6 @@ export class TokenAccount {
       )
     );
     
-    // Gửi transaction
     const signature = await sendAndConfirmTransaction(
       this.connection,
       transaction,

@@ -102,17 +102,17 @@ export class NonTransferableToken extends Token {
    * @param payer - Transaction fee payer
    * @param amount - Amount to mint
    * @param mintAuthority - Authority allowed to mint tokens
-   * @returns Public key of the newly created account
+   * @returns Public key of the newly created account and transaction signature
    */
   async createAccountAndMintTo(
     owner: PublicKey,
     payer: Keypair,
     amount: bigint,
-    mintAuthority: Keypair
-  ): Promise<PublicKey> {
+    mintAuthority: Signer
+  ): Promise<{ address: PublicKey; signature: string }> {
     try {
       // Create token account
-      const { address } = await this.createOrGetTokenAccount(payer, owner);
+      const { address, signature: createSignature } = await this.createOrGetTokenAccount(payer, owner);
 
       // Mint tokens
       const transaction = new Transaction().add(
@@ -126,14 +126,17 @@ export class NonTransferableToken extends Token {
         )
       );
 
-      await sendAndConfirmTransaction(
+      const mintSignature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
         [payer, mintAuthority],
         { commitment: "confirmed" }
       );
 
-      return address;
+      return { 
+        address, 
+        signature: createSignature || mintSignature 
+      };
     } catch (error: any) {
       throw new Error(`Could not create account and mint tokens: ${error.message}`);
     }

@@ -226,26 +226,4 @@ export class ImmutableOwnerToken extends Token {
     }
   }
 
-  /**
-   * Usage guide for ImmutableOwnerToken:
-   * 
-   * 1. Initialize the object:
-   *    const immutableToken = new ImmutableOwnerToken(connection, mintAddress);
-   * 
-   * 2. Create a token account with immutable owner:
-   *    const signature = await immutableToken.createTokenAccountWithImmutableOwner(
-   *      payer,
-   *      ownerPublicKey,
-   *      tokenAccountKeypair
-   *    );
-   * 
-   * 3. Or create an associated token account with immutable owner:
-   *    const { signature, tokenAccount } = await immutableToken.createAssociatedTokenAccountWithImmutableOwner(
-   *      payer,
-   *      ownerPublicKey
-   *    );
-   * 
-   * 4. Check if an account has immutable owner:
-   *    const hasImmutableOwner = await immutableToken.hasImmutableOwner(tokenAccountAddress);
-   */
 }

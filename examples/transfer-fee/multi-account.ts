@@ -85,7 +85,7 @@ async function main() {
     
     try {
       const transferSignature = await token.transfer(
-        ownerTokenAccount,
+        ownerTokenAccount.address,
         recipientAccounts[i].address,
         payer,
         transferAmount,

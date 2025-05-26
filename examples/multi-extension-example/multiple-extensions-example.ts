@@ -1,18 +1,16 @@
 import {
   Connection,
   Keypair,
-  LAMPORTS_PER_SOL,
   clusterApiUrl,
 } from "@solana/web3.js";
 import {
-  ExtensionType,
   TOKEN_2022_PROGRAM_ID,
   getMint,
 } from "@solana/spl-token";
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from "solana-token-extension-boost";
+import { TokenBuilder } from "../../src";
 
 
 async function main() {
@@ -55,7 +53,7 @@ async function main() {
     .addInterestBearing(interestRate, rateAuthority)
     
     // Extension 3: PermanentDelegate
-    .addPermanentDelegate(delegateKeypair.publicKey);
+    .addPermanentDelegate(rateAuthority);
 
   // Create token with configured extensions
   const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);

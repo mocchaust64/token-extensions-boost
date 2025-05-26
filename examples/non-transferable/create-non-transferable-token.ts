@@ -2,9 +2,7 @@
 import {
   Connection,
   Keypair,
-  LAMPORTS_PER_SOL,
   clusterApiUrl,
-  PublicKey,
   Transaction,
 } from '@solana/web3.js';
 import * as fs from 'fs';
@@ -32,7 +30,6 @@ async function main() {
     .addNonTransferable();
   
   const { mint, transactionSignature } = await tokenBuilder.createToken(payer);
-
   console.log(`Non-Transferable Token created: ${mint.toBase58()}`);
   
   // Create NonTransferableToken instance from mint address

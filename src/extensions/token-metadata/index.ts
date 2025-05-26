@@ -180,20 +180,17 @@ export class TokenMetadataToken extends Token {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Transaction khởi tạo Mint thành công: ${initMintSignature.substring(0, 16)}...`);
+      console.log(`Transaction create Mint succesed: ${initMintSignature.substring(0, 16)}...`);
       console.log(`Explorer: https://explorer.solana.com/tx/${initMintSignature}?cluster=devnet`);
       
-      // Chờ đủ lâu để đảm bảo transaction được xác nhận
       await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      // TRANSACTION 4: Chỉ cập nhật MetadataPointer
-      console.log("Bước 4: Cập nhật MetadataPointer...");
+      console.log("step 4: update MetadataPointer...");
       
       const updatePointerTx = new Transaction().add(
         createUpdateMetadataPointerInstruction(
           mint,
           payer.publicKey,
-          mint, // Trỏ đến chính mint để lưu metadata trong đó
+          mint,
           [],
           TOKEN_2022_PROGRAM_ID
         )
@@ -206,19 +203,16 @@ export class TokenMetadataToken extends Token {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Transaction cập nhật MetadataPointer thành công: ${updatePointerSignature.substring(0, 16)}...`);
+      console.log(`Transaction update MetadataPointer succesed: ${updatePointerSignature.substring(0, 16)}...`);
       console.log(`Explorer: https://explorer.solana.com/tx/${updatePointerSignature}?cluster=devnet`);
       
-      // Chờ đủ lâu để đảm bảo transaction được xác nhận
       await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      // TRANSACTION 5: Chỉ khởi tạo TokenMetadata
-      console.log("Bước 5: Khởi tạo TokenMetadata...");
+      console.log("step 5: create TokenMetadata...");
       
       const initMetadataTx = new Transaction().add(
         createInitializeInstruction({
           programId: TOKEN_2022_PROGRAM_ID,
-          metadata: mint, // Metadata được lưu trong mint account
+          metadata: mint, 
           updateAuthority: payer.publicKey,
           mint: mint,
           mintAuthority: payer.publicKey,
@@ -235,21 +229,20 @@ export class TokenMetadataToken extends Token {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Transaction khởi tạo TokenMetadata thành công: ${initMetadataSignature.substring(0, 16)}...`);
+      console.log(`Transaction create TokenMetadata succed: ${initMetadataSignature.substring(0, 16)}...`);
       console.log(`Explorer: https://explorer.solana.com/tx/${initMetadataSignature}?cluster=devnet`);
       
-      // Nếu có metadata bổ sung, thêm từng trường trong các transaction riêng
       if (metadata.additionalMetadata && Object.keys(metadata.additionalMetadata).length > 0) {
-        console.log("Bước 6+: Thêm các trường metadata bổ sung...");
+        console.log("step 6: add update metadata ...");
         
         let fieldCounter = 0;
         for (const [key, value] of Object.entries(metadata.additionalMetadata)) {
           if (key.length === 0 || value.length === 0) continue;
           
           fieldCounter++;
-          console.log(`  Thêm trường #${fieldCounter}: ${key}=${value}`);
+          console.log(`  add #${fieldCounter}: ${key}=${value}`);
           
-          // Chờ đủ lâu giữa các transaction
+    
           await new Promise(resolve => setTimeout(resolve, 1500));
           
           const addFieldTx = new Transaction().add(
@@ -277,9 +270,8 @@ export class TokenMetadataToken extends Token {
         }
       }
       
-      console.log(`\n✅ Token với metadata tạo thành công!`);
-      console.log(`📝 Địa chỉ mint: ${mint.toBase58()}`);
-      console.log(`🔍 Xem trên explorer: https://explorer.solana.com/address/${mint.toBase58()}?cluster=devnet`);
+   
+      console.log(`🔍explorer: https://explorer.solana.com/address/${mint.toBase58()}?cluster=devnet`);
 
       return new TokenMetadataToken(connection, mint, metadata);
     } catch (error) {
@@ -289,9 +281,6 @@ export class TokenMetadataToken extends Token {
     }
   }
 
-  /**
-   * Tạo token từ mint account hiện có
-   */
   static async fromMint(
     connection: Connection, 
     mint: PublicKey
@@ -329,9 +318,6 @@ export class TokenMetadataToken extends Token {
     }
   }
 
-  /**
-   * Lấy thông tin metadata của token
-   */
   async getTokenMetadata(): Promise<TokenMetadata> {
     const metadata = await getTokenMetadata(
       this.connection,
@@ -347,9 +333,6 @@ export class TokenMetadataToken extends Token {
     return metadata;
   }
 
-  /**
-   * Cập nhật một trường trong metadata
-   */
   async updateMetadataField(
     authority: Keypair,
     field: string,
@@ -377,9 +360,7 @@ export class TokenMetadataToken extends Token {
     return { signature, metadata };
   }
 
-  /**
-   * Xóa một trường khỏi metadata
-   */
+
   async removeMetadataField(
     authority: Keypair,
     key: string
@@ -406,9 +387,7 @@ export class TokenMetadataToken extends Token {
     return { signature, metadata };
   }
 
-  /**
-   * Cập nhật nhiều trường cùng lúc
-   */
+
   async updateMetadataBatch(
     authority: Keypair,
     fields: Record<string, string>
@@ -439,9 +418,6 @@ export class TokenMetadataToken extends Token {
     return { signature, metadata };
   }
 
-  /**
-   * Lấy metadata offchain từ URI
-   */
   async getNFTMetadata(): Promise<NFTMetadataContent> {
     const metadata = await this.getTokenMetadata();
     
@@ -457,16 +433,11 @@ export class TokenMetadataToken extends Token {
     return await response.json();
   }
 
-  /**
-   * Lấy cấu hình metadata
-   */
+
   getMetadataConfig(): MetadataConfig {
     return this.metadata;
   }
 
-  /**
-   * Cập nhật quyền cập nhật metadata
-   */
   async updateMetadataAuthority(
     currentAuthority: Keypair,
     newAuthority: PublicKey | null

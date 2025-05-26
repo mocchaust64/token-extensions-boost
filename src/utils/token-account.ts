@@ -3,19 +3,19 @@ import { getOrCreateAssociatedTokenAccount as getOrCreateAssociatedTokenAccountB
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 /**
- * Lấy hoặc tạo tài khoản token liên kết cho chủ sở hữu và mint
+ * Get or create associated token account for owner and mint
  * 
- * @param connection Connection để sử dụng
- * @param payer Người trả phí giao dịch và phí khởi tạo
- * @param mint Mint liên kết với tài khoản cần thiết lập hoặc xác minh
- * @param owner Chủ sở hữu của tài khoản cần thiết lập hoặc xác minh
- * @param allowOwnerOffCurve Cho phép tài khoản chủ sở hữu là PDA (Program Derived Address)
- * @param commitment Mức độ cam kết mong muốn để truy vấn trạng thái
- * @param confirmOptions Tùy chọn xác nhận giao dịch
- * @param programId Tài khoản chương trình SPL Token
- * @param associatedTokenProgramId Tài khoản chương trình SPL Associated Token
+ * @param connection Connection to use
+ * @param payer Transaction and initialization fee payer
+ * @param mint Mint associated with the account to establish or verify
+ * @param owner Owner of the account to establish or verify
+ * @param allowOwnerOffCurve Allow the owner account to be a PDA (Program Derived Address)
+ * @param commitment Desired commitment level for the query state
+ * @param confirmOptions Transaction confirmation options
+ * @param programId SPL Token program account
+ * @param associatedTokenProgramId SPL Associated Token program account
  * 
- * @return Địa chỉ của tài khoản token liên kết mới
+ * @return Address of the new associated token account
  */
 export async function getOrCreateTokenAccount(
   connection: Connection,

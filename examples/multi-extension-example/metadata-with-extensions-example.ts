@@ -9,7 +9,7 @@ import {
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { TokenBuilder } from "solana-token-extension-boost";
+import { TokenBuilder } from "../../src";
 
 async function main() {
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
@@ -19,17 +19,6 @@ async function main() {
   const payer = Keypair.fromSecretKey(secretKey)
 
 
-  // 1. Prepare metadata information
-  const metadata = {
-    name: "OPOS",
-    symbol: "OPOS",
-    uri: "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/DeveloperPortal/metadata.json",
-
-    additionalMetadata: {
-         "trait_type": "Item",
-    "value": "Developer Portal"
-    }
-};
   // 2. Create TokenBuilder from SDK
   const tokenBuilder = new TokenBuilder(connection);
   
@@ -43,10 +32,14 @@ async function main() {
     
     // Extension 1: Metadata - Using addTokenMetadata
     .addTokenMetadata(
-      metadata.name,
-      metadata.symbol,
-      metadata.uri,
-      metadata.additionalMetadata
+       "OPOS",
+      "OPOS",
+       "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/DeveloperPortal/metadata.json",
+  
+      {
+           "trait_type": "Item",
+      "value": "Developer Portal"
+      }
     )
     
     // Extension 2: TransferFee (0.5% transfer fee)
@@ -56,11 +49,12 @@ async function main() {
       payer.publicKey, // transferFeeConfigAuthority
       payer.publicKey  // withdrawWithheldAuthority
     )
-    
+    .addInterestBearing(0.1, payer.publicKey)
     // Extension 3: PermanentDelegate
     .addPermanentDelegate(
       delegateKeypair.publicKey
     );
+    
 
   // 4. Create token with the new method
   const { mint } = await tokenBuilder.createToken(payer);

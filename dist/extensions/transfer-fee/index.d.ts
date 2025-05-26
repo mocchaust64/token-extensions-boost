@@ -101,9 +101,12 @@ export declare class TransferFeeToken extends Token {
      * @param payer - Transaction fee payer keypair
      * @param amount - Token amount to mint
      * @param mintAuthority - Mint authority keypair
-     * @returns Created token account address
+     * @returns Created token account address and transaction signature
      */
-    createAccountAndMintTo(owner: PublicKey, payer: Keypair, amount: bigint, mintAuthority: Keypair): Promise<PublicKey>;
+    createAccountAndMintTo(owner: PublicKey, payer: Keypair, amount: bigint, mintAuthority: Signer): Promise<{
+        address: PublicKey;
+        signature: string;
+    }>;
     /**
      * Find all accounts with withheld fees
      *

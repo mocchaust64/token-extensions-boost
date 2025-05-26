@@ -119,7 +119,6 @@ class TransferFeeToken extends token_1.Token {
         if (accounts.length === 0) {
             throw new Error("Account list cannot be empty");
         }
-        // Xác định authority để sử dụng
         const authority = this.getWithdrawAuthority(withdrawAuthority);
         if (!authority) {
             throw new Error("Withdrawal authority is required");
@@ -144,7 +143,6 @@ class TransferFeeToken extends token_1.Token {
         if (accounts.length === 0) {
             throw new Error("Account list cannot be empty");
         }
-        // Xác định authority để sử dụng
         const authority = this.getWithdrawAuthority(withdrawAuthority);
         if (!authority) {
             throw new Error("Withdrawal authority is required");
@@ -192,17 +190,14 @@ class TransferFeeToken extends token_1.Token {
      * @private
      */
     getWithdrawAuthority(providedAuthority) {
-        // Nếu có authority được cung cấp, sử dụng nó
         if (providedAuthority) {
             return providedAuthority;
         }
-        // Kiểm tra authority từ config
         if (this.config.withdrawWithheldAuthority) {
             if (this.config.withdrawWithheldAuthority instanceof web3_js_1.Keypair) {
                 return this.config.withdrawWithheldAuthority;
             }
         }
-        // Không tìm thấy authority phù hợp
         return null;
     }
     /**
@@ -212,22 +207,26 @@ class TransferFeeToken extends token_1.Token {
      * @param payer - Transaction fee payer keypair
      * @param amount - Token amount to mint
      * @param mintAuthority - Mint authority keypair
-     * @returns Created token account address
+     * @returns Created token account address and transaction signature
      */
     async createAccountAndMintTo(owner, payer, amount, mintAuthority) {
         try {
             const tokenAccount = await (0, spl_token_1.getAssociatedTokenAddress)(this.mint, owner, false, spl_token_1.TOKEN_2022_PROGRAM_ID);
             const transaction = new web3_js_1.Transaction();
+            let accountCreated = false;
             try {
                 await (0, spl_token_1.getAccount)(this.connection, tokenAccount, "recent", spl_token_1.TOKEN_2022_PROGRAM_ID);
             }
             catch (error) {
+                accountCreated = true;
                 transaction.add((0, spl_token_1.createAssociatedTokenAccountInstruction)(payer.publicKey, tokenAccount, owner, this.mint, spl_token_1.TOKEN_2022_PROGRAM_ID));
             }
             const mintInstruction = (0, spl_token_1.createMintToInstruction)(this.mint, tokenAccount, mintAuthority.publicKey, amount, [], spl_token_1.TOKEN_2022_PROGRAM_ID);
             transaction.add(mintInstruction);
-            await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, [payer, mintAuthority]);
-            return tokenAccount;
+            const signature = await (0, web3_js_1.sendAndConfirmTransaction)(this.connection, transaction, accountCreated || !(mintAuthority instanceof web3_js_1.Keypair) ?
+                [payer, mintAuthority] :
+                [payer, mintAuthority instanceof web3_js_1.Keypair ? mintAuthority : payer]);
+            return { address: tokenAccount, signature };
         }
         catch (error) {
             throw new Error(`Could not create account and mint tokens: ${error.message}`);
@@ -261,7 +260,6 @@ class TransferFeeToken extends token_1.Token {
                     }
                 }
                 catch (error) {
-                    // Skip accounts with errors
                 }
             }
             return accountsWithFees;
@@ -319,7 +317,6 @@ class TransferFeeToken extends token_1.Token {
                 totalWithheldAmount += feeInfo.withheldAmount;
             }
             catch (error) {
-                // Bỏ qua các tài khoản bị lỗi
             }
         }
         return totalWithheldAmount;

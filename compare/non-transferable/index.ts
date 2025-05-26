@@ -190,11 +190,6 @@ try{
         `https://solana.fm/tx/${transactionSignature}?cluster=devnet-solana`,
     );
 
-      
-
-
-
-
 
 }
 main()
