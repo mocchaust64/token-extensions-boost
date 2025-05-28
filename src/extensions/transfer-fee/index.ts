@@ -4,8 +4,7 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
-  sendAndConfirmTransaction,
-  Signer,
+  TransactionInstruction,
 } from "@solana/web3.js";
 import {
   ExtensionType,
@@ -45,30 +44,34 @@ export class TransferFeeToken extends Token {
   }
 
   /**
-   * Create a new TransferFeeToken
+   * Generate instructions to create a new TransferFeeToken
    * 
    * @param connection - Connection to Solana cluster
-   * @param payer - Transaction fee payer keypair
+   * @param payer - Public key of the transaction fee payer
    * @param params - Initialization parameters including:
    *   - decimals: Number of decimal places
    *   - mintAuthority: Authority allowed to mint tokens
    *   - transferFeeConfig: Transfer fee configuration
-   * @returns Newly created TransferFeeToken object
+   * @returns Instructions, signers and mint address
    */
-  static async create(
+  static async createInstructions(
     connection: Connection,
-    payer: Keypair,
+    payer: PublicKey,
     params: {
       decimals: number;
       mintAuthority: PublicKey;
       transferFeeConfig: {
         feeBasisPoints: number;
         maxFee: bigint;
-        transferFeeConfigAuthority: Keypair;
-        withdrawWithheldAuthority: Keypair;
+        transferFeeConfigAuthority: PublicKey;
+        withdrawWithheldAuthority: PublicKey;
       };
     }
-  ): Promise<TransferFeeToken> {
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    signers: Keypair[];
+    mint: PublicKey;
+  }> {
     if (params.transferFeeConfig.feeBasisPoints < 0 || params.transferFeeConfig.feeBasisPoints > 10000) {
       throw new Error("Fee rate must be between 0 and 10000 basis points (0-100%)");
     }
@@ -82,9 +85,9 @@ export class TransferFeeToken extends Token {
       const mintLen = getMintLen([ExtensionType.TransferFeeConfig]);
       const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
 
-      const transaction = new Transaction().add(
+      const instructions: TransactionInstruction[] = [
         SystemProgram.createAccount({
-          fromPubkey: payer.publicKey,
+          fromPubkey: payer,
           newAccountPubkey: mintKeypair.publicKey,
           space: mintLen,
           lamports,
@@ -92,8 +95,8 @@ export class TransferFeeToken extends Token {
         }),
         createInitializeTransferFeeConfigInstruction(
           mintKeypair.publicKey,
-          params.transferFeeConfig.transferFeeConfigAuthority.publicKey,
-          params.transferFeeConfig.withdrawWithheldAuthority.publicKey,
+          params.transferFeeConfig.transferFeeConfigAuthority,
+          params.transferFeeConfig.withdrawWithheldAuthority,
           params.transferFeeConfig.feeBasisPoints,
           params.transferFeeConfig.maxFee,
           TOKEN_2022_PROGRAM_ID
@@ -105,21 +108,15 @@ export class TransferFeeToken extends Token {
           null,
           TOKEN_2022_PROGRAM_ID
         )
-      );
+      ];
 
-      await sendAndConfirmTransaction(connection, transaction, [
-        payer,
-        mintKeypair,
-      ]);
-
-      return new TransferFeeToken(connection, mintKeypair.publicKey, {
-        feeBasisPoints: params.transferFeeConfig.feeBasisPoints,
-        maxFee: params.transferFeeConfig.maxFee,
-        transferFeeConfigAuthority: params.transferFeeConfig.transferFeeConfigAuthority,
-        withdrawWithheldAuthority: params.transferFeeConfig.withdrawWithheldAuthority,
-      });
+      return {
+        instructions,
+        signers: [mintKeypair],
+        mint: mintKeypair.publicKey
+      };
     } catch (error: any) {
-      throw new Error(`Could not create TransferFeeToken: ${error.message}`);
+      throw new Error(`Could not create TransferFeeToken instructions: ${error.message}`);
     }
   }
 
@@ -135,32 +132,28 @@ export class TransferFeeToken extends Token {
   }
 
   /**
-   * Execute token transfer with automatically calculated fee
+   * Create transfer instruction with automatically calculated fee
    * 
    * @param source - Source account address
    * @param destination - Destination account address
    * @param owner - Source account owner
    * @param amount - Token amount to transfer
    * @param decimals - Token decimal places
-   * @returns Transaction signature
+   * @returns TransactionInstruction
    */
-  async transfer(
+  createTransferInstruction(
     source: PublicKey,
     destination: PublicKey,
-    owner: Signer,
+    owner: PublicKey,
     amount: bigint,
     decimals: number
-  ): Promise<string> {
-    try {
+  ): TransactionInstruction {
       const fee = this.calculateFee(amount);
-      return await this.transferWithFee(source, destination, owner, amount, decimals, Number(fee));
-    } catch (error: any) {
-      throw new Error(`Could not transfer tokens: ${error.message}`);
-    }
+    return this.createTransferWithFeeInstruction(source, destination, owner, amount, decimals, Number(fee));
   }
 
   /**
-   * Execute token transfer with specified fee
+   * Create transfer instruction with specified fee
    * 
    * @param source - Source account address
    * @param destination - Destination account address
@@ -168,206 +161,114 @@ export class TransferFeeToken extends Token {
    * @param amount - Token amount to transfer
    * @param decimals - Token decimal places
    * @param fee - Specified fee amount
-   * @returns Transaction signature
+   * @returns TransactionInstruction
    */
-  async transferWithFee(
+  createTransferWithFeeInstruction(
     source: PublicKey,
     destination: PublicKey,
-    owner: Signer,
+    owner: PublicKey,
     amount: bigint,
     decimals: number,
     fee: number
-  ): Promise<string> {
-    try {
-      const transaction = new Transaction().add(
-        createTransferCheckedWithFeeInstruction(
+  ): TransactionInstruction {
+    return createTransferCheckedWithFeeInstruction(
           source,
           this.mint,
           destination,
-          owner.publicKey,
+      owner,
           amount,
           decimals,
           BigInt(fee),
           [],
           TOKEN_2022_PROGRAM_ID
-        )
       );
-
-      return await sendAndConfirmTransaction(this.connection, transaction, [owner]);
-    } catch (error: any) {
-      throw new Error(`Could not transfer tokens with fee: ${error.message}`);
-    }
   }
 
   /**
-   * Harvest withheld tokens from accounts to the mint
+   * Create instruction to harvest withheld tokens from accounts to the mint
    * 
    * @param accounts - List of accounts with withheld fees to harvest
-   * @param withdrawAuthority - Withdraw authority keypair (required if not set in constructor)
-   * @returns Transaction signature
+   * @returns Transaction instruction
    */
-  async harvestWithheldTokensToMint(
-    accounts: PublicKey[],
-    withdrawAuthority?: Keypair
-  ): Promise<string> {
+  createHarvestWithheldTokensToMintInstruction(
+    accounts: PublicKey[]
+  ): TransactionInstruction {
     if (accounts.length === 0) {
       throw new Error("Account list cannot be empty");
     }
 
-    const authority = this.getWithdrawAuthority(withdrawAuthority);
-    if (!authority) {
-      throw new Error("Withdrawal authority is required");
-    }
-
-    try {
-      const transaction = new Transaction().add(
-        createHarvestWithheldTokensToMintInstruction(
+    return createHarvestWithheldTokensToMintInstruction(
           this.mint,
           accounts,
           TOKEN_2022_PROGRAM_ID
-        )
-      );
-
-      return await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [authority]
-      );
-    } catch (error: any) {
-      throw new Error(`Could not harvest fees to mint: ${error.message}`);
-    }
+    );
   }
 
   /**
-   * Withdraw withheld tokens from accounts to a destination account
+   * Create instruction to withdraw withheld tokens from accounts to a destination account
    * 
    * @param accounts - List of accounts with withheld fees to withdraw
    * @param destination - Destination account to receive fees
-   * @param withdrawAuthority - Withdraw authority keypair (required if not set in constructor)
-   * @returns Transaction signature
+   * @param authority - Withdraw authority public key
+   * @returns Transaction instruction
    */
-  async withdrawFeesFromAccounts(
+  createWithdrawFeesFromAccountsInstruction(
     accounts: PublicKey[],
     destination: PublicKey,
-    withdrawAuthority?: Keypair
-  ): Promise<string> {
+    authority: PublicKey
+  ): TransactionInstruction {
     if (accounts.length === 0) {
       throw new Error("Account list cannot be empty");
     }
 
-
-    const authority = this.getWithdrawAuthority(withdrawAuthority);
-    if (!authority) {
-      throw new Error("Withdrawal authority is required");
-    }
-
-    const authorityPublicKey = authority instanceof Keypair 
-      ? authority.publicKey 
-      : authority;
-
-    try {
-      const transaction = new Transaction().add(
-        createWithdrawWithheldTokensFromAccountsInstruction(
+    return createWithdrawWithheldTokensFromAccountsInstruction(
           this.mint,
           destination,
-          authorityPublicKey,
+      authority,
           [],
           accounts,
           TOKEN_2022_PROGRAM_ID
-        )
-      );
-
-      return await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [authority]
-      );
-    } catch (error: any) {
-      throw new Error(`Could not withdraw fees from accounts: ${error.message}`);
-    }
+    );
   }
 
   /**
-   * Withdraw withheld tokens from mint to a destination account
+   * Create instruction to withdraw withheld tokens from mint to a destination account
    * 
    * @param destination - Destination account to receive fees
-   * @param withdrawAuthority - Withdraw authority keypair (required if not set in constructor)
-   * @returns Transaction signature
+   * @param authority - Withdraw authority public key
+   * @returns Transaction instruction
    */
-  async withdrawFeesFromMint(
+  createWithdrawFeesFromMintInstruction(
     destination: PublicKey, 
-    withdrawAuthority?: Keypair
-  ): Promise<string> {
-    // Xác định authority để sử dụng
-    const authority = this.getWithdrawAuthority(withdrawAuthority);
-    if (!authority) {
-      throw new Error("Withdrawal authority is required");
-    }
-
-    const authorityPublicKey = authority instanceof Keypair 
-      ? authority.publicKey 
-      : authority;
-
-    try {
-      const transaction = new Transaction().add(
-        createWithdrawWithheldTokensFromMintInstruction(
+    authority: PublicKey
+  ): TransactionInstruction {
+    return createWithdrawWithheldTokensFromMintInstruction(
           this.mint,
           destination,
-          authorityPublicKey,
+      authority,
           [],
           TOKEN_2022_PROGRAM_ID
-        )
-      );
-
-      return await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [authority]
-      );
-    } catch (error: any) {
-      throw new Error(`Could not withdraw fees from mint: ${error.message}`);
-    }
+    );
   }
 
   /**
-   * Get the withdraw authority signer
-   * 
-   * @param providedAuthority - Optional withdraw authority to use
-   * @returns Withdraw authority keypair or public key
-   * @private
-   */
-  private getWithdrawAuthority(providedAuthority?: Keypair): Keypair | null {
-
-    if (providedAuthority) {
-      return providedAuthority;
-    }
-
- 
-    if (this.config.withdrawWithheldAuthority) {
-      if (this.config.withdrawWithheldAuthority instanceof Keypair) {
-        return this.config.withdrawWithheldAuthority;
-      }
-    }
-
-
-    return null;
-  }
-
-  /**
-   * Create token account and mint tokens to it
+   * Create instructions to create token account and mint tokens to it
    * 
    * @param owner - Token account owner address
-   * @param payer - Transaction fee payer keypair
+   * @param payer - Transaction fee payer public key
    * @param amount - Token amount to mint
-   * @param mintAuthority - Mint authority keypair
-   * @returns Created token account address and transaction signature
+   * @param mintAuthority - Mint authority
+   * @returns Instructions and token account address
    */
-  async createAccountAndMintTo(
+  async createAccountAndMintToInstructions(
     owner: PublicKey,
-    payer: Keypair,
+    payer: PublicKey,
     amount: bigint,
-    mintAuthority: Signer
-  ): Promise<{ address: PublicKey; signature: string }> {
+    mintAuthority: PublicKey
+  ): Promise<{ 
+    instructions: TransactionInstruction[]; 
+    address: PublicKey;
+  }> {
     try {
       const tokenAccount = await getAssociatedTokenAddress(
         this.mint,
@@ -376,16 +277,14 @@ export class TransferFeeToken extends Token {
         TOKEN_2022_PROGRAM_ID
       );
 
-      const transaction = new Transaction();
-      let accountCreated = false;
+      const instructions: TransactionInstruction[] = [];
       
       try {
         await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
       } catch (error) {
-        accountCreated = true;
-        transaction.add(
+        instructions.push(
           createAssociatedTokenAccountInstruction(
-            payer.publicKey,
+            payer,
             tokenAccount,
             owner,
             this.mint,
@@ -397,25 +296,20 @@ export class TransferFeeToken extends Token {
       const mintInstruction = createMintToInstruction(
         this.mint,
         tokenAccount,
-        mintAuthority.publicKey,
+        mintAuthority,
         amount,
         [],
         TOKEN_2022_PROGRAM_ID
       );
 
-      transaction.add(mintInstruction);
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection, 
-        transaction, 
-        accountCreated || !(mintAuthority instanceof Keypair) ? 
-          [payer, mintAuthority] : 
-          [payer, mintAuthority instanceof Keypair ? mintAuthority : payer]
-      );
+      instructions.push(mintInstruction);
       
-      return { address: tokenAccount, signature };
+      return { 
+        instructions, 
+        address: tokenAccount 
+      };
     } catch (error: any) {
-      throw new Error(`Could not create account and mint tokens: ${error.message}`);
+      throw new Error(`Could not create account and mint instructions: ${error.message}`);
     }
   }
 
@@ -545,56 +439,4 @@ export class TransferFeeToken extends Token {
 
     return false;
   }
-
-  /**
-   * Tạo token account nếu chưa tồn tại hoặc trả về account đã tồn tại
-   * 
-   * @param payer - Người trả phí giao dịch
-   * @param owner - Chủ sở hữu tài khoản token
-   * @returns Đối tượng chứa địa chỉ tài khoản và chữ ký giao dịch
-   */
-  async createOrGetTokenAccount(
-    payer: Keypair,
-    owner: PublicKey
-  ): Promise<{ address: PublicKey; signature: string }> {
-    try {
-      const tokenAccount = await getAssociatedTokenAddress(
-        this.mint,
-        owner,
-        false,
-        TOKEN_2022_PROGRAM_ID
-      );
-
-      const transaction = new Transaction();
-      let accountExists = false;
-      
-      try {
-        await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
-        accountExists = true;
-        return { address: tokenAccount, signature: "" };
-      } catch (error) {
-        transaction.add(
-          createAssociatedTokenAccountInstruction(
-            payer.publicKey,
-            tokenAccount,
-            owner,
-            this.mint,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-        
-        const signature = await sendAndConfirmTransaction(
-          this.connection,
-          transaction,
-          [payer]
-        );
-        
-        return { address: tokenAccount, signature };
-      }
-    } catch (error: any) {
-      throw new Error(`Could not create or get token account: ${error.message}`);
-    }
-  }
-
- 
 } 

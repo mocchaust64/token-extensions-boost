@@ -8,3 +8,5 @@ export declare const METADATA_PROGRAM_ID: PublicKey;
 export declare const BASIS_POINTS_DIVISOR = 10000;
 export declare const MAX_FEE_BASIS_POINTS = 10000;
 export declare const MAX_INTEREST_RATE = 10000;
+export declare const TOKEN_GROUP_PROGRAM_ID: PublicKey;
+export declare const MEMO_PROGRAM_ID: PublicKey;

@@ -18,6 +18,17 @@ class Token {
         return spl_token_1.TOKEN_2022_PROGRAM_ID;
     }
     /**
+     * Tạo instruction mint token vào tài khoản
+     *
+     * @param destination - Địa chỉ tài khoản nhận token
+     * @param authority - Authority được phép mint token
+     * @param amount - Số lượng token cần mint
+     * @returns TransactionInstruction
+     */
+    createMintToInstruction(destination, authority, amount) {
+        return (0, spl_token_1.createMintToInstruction)(this.mint, destination, authority, amount, [], this.getProgramId());
+    }
+    /**
      * Mint token vào tài khoản
      *
      * @param destination - Địa chỉ tài khoản nhận token
@@ -36,6 +47,18 @@ class Token {
         }
     }
     /**
+     * Tạo instruction mint token với kiểm tra decimals
+     *
+     * @param destination - Địa chỉ tài khoản nhận token
+     * @param authority - Authority được phép mint token
+     * @param amount - Số lượng token cần mint
+     * @param decimals - Số decimals của token
+     * @returns TransactionInstruction
+     */
+    createMintToCheckedInstruction(destination, authority, amount, decimals) {
+        return (0, spl_token_1.createMintToInstruction)(this.mint, destination, authority, amount, [], this.getProgramId());
+    }
+    /**
      * Mint token vào tài khoản với kiểm tra decimals
      *
      * @param destination - Địa chỉ tài khoản nhận token
@@ -52,6 +75,45 @@ class Token {
         }
         catch (error) {
             throw new Error(`Could not mint tokens with decimals check: ${error.message}`);
+        }
+    }
+    /**
+     * Tạo các instructions để tạo tài khoản token và mint token vào tài khoản đó
+     *
+     * @param owner - Chủ sở hữu tài khoản token
+     * @param payer - Payer public key
+     * @param amount - Số lượng token cần mint
+     * @param mintAuthority - Authority được phép mint token
+     * @returns Thông tin về instructions và địa chỉ tài khoản token
+     */
+    async createAccountAndMintToInstructions(owner, payer, amount, mintAuthority) {
+        try {
+            // Lấy địa chỉ associated token account
+            const address = await (0, spl_token_1.getAssociatedTokenAddress)(this.mint, owner, true, // Cho phép sở hữu bởi PDA
+            this.getProgramId());
+            const instructions = [];
+            // Kiểm tra xem tài khoản đã tồn tại chưa
+            let accountExists = false;
+            try {
+                await (0, spl_token_1.getAccount)(this.connection, address, 'recent', this.getProgramId());
+                accountExists = true;
+            }
+            catch (error) {
+                if (!(error instanceof spl_token_1.TokenAccountNotFoundError)) {
+                    throw error;
+                }
+                // Tài khoản chưa tồn tại, cần tạo mới
+            }
+            // Nếu tài khoản chưa tồn tại, thêm instruction tạo tài khoản
+            if (!accountExists) {
+                instructions.push((0, spl_token_1.createAssociatedTokenAccountInstruction)(payer, address, owner, this.mint, this.getProgramId()));
+            }
+            // Thêm instruction mint token
+            instructions.push((0, spl_token_1.createMintToInstruction)(this.mint, address, mintAuthority, amount, [], this.getProgramId()));
+            return { instructions, address };
+        }
+        catch (error) {
+            throw new Error(`Could not create account and mint instructions: ${error.message}`);
         }
     }
     /**
@@ -77,6 +139,18 @@ class Token {
         catch (error) {
             throw new Error(`Could not create account and mint tokens: ${error.message}`);
         }
+    }
+    /**
+     * Tạo instruction đốt (burn) một số lượng token từ tài khoản
+     *
+     * @param account - Địa chỉ tài khoản chứa token cần đốt
+     * @param owner - Chủ sở hữu của tài khoản
+     * @param amount - Số lượng token cần đốt
+     * @param decimals - Số decimals của token
+     * @returns TransactionInstruction để đốt token
+     */
+    createBurnInstruction(account, owner, amount, decimals) {
+        return (0, spl_token_1.createBurnCheckedInstruction)(account, this.mint, owner, amount, decimals, [], this.getProgramId());
     }
     /**
      * Đốt (burn) một số lượng token từ tài khoản
@@ -112,6 +186,19 @@ class Token {
         catch (error) {
             throw new Error(`Could not burn tokens with decimals check: ${error.message}`);
         }
+    }
+    /**
+     * Tạo instruction chuyển token với kiểm tra decimals
+     *
+     * @param source - Địa chỉ tài khoản nguồn
+     * @param destination - Địa chỉ tài khoản đích
+     * @param owner - Chủ sở hữu tài khoản nguồn
+     * @param amount - Số lượng token cần chuyển
+     * @param decimals - Số decimals của token
+     * @returns TransactionInstruction
+     */
+    createTransferInstruction(source, destination, owner, amount, decimals) {
+        return (0, spl_token_1.createTransferCheckedInstruction)(source, this.mint, destination, owner, amount, decimals, [], this.getProgramId());
     }
     /**
      * Chuyển token với kiểm tra decimals

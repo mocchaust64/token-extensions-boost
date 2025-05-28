@@ -5,7 +5,8 @@ import {
   Transaction, 
   sendAndConfirmTransaction, 
   SystemProgram,
-  Signer
+  Signer,
+  TransactionInstruction
 } from "@solana/web3.js";
 import {
   ExtensionType,
@@ -78,15 +79,15 @@ export class TokenAccountBuilder {
   }
   
   /**
-   * Create standard (non-associated) token account
+   * Create instructions for standard (non-associated) token account
    * 
-   * @param payer - Transaction fee payer
-   * @returns Information about the created token account
+   * @param payer - Public key of the transaction fee payer
+   * @returns Instructions, signers and token account address
    */
-  async buildStandardAccount(payer: Keypair): Promise<{
+  async buildStandardAccountInstructions(payer: PublicKey): Promise<{
+    instructions: TransactionInstruction[];
+    signers: Keypair[];
     tokenAccount: PublicKey;
-    tokenAccountKeypair: Keypair;
-    transactionSignature: string;
   }> {
     if (!this.mint || !this.owner) {
       throw new Error("Mint and owner are required. Call setTokenAccountInfo first.");
@@ -103,8 +104,8 @@ export class TokenAccountBuilder {
       
       console.log(`Token account size: ${accountLen} bytes`);
       
-      // 3. Create transaction
-      const transaction = new Transaction();
+      // 3. Create instructions array
+      const instructions: TransactionInstruction[] = [];
       
       // Correct initialization order: 
       // 1. Create account
@@ -112,9 +113,9 @@ export class TokenAccountBuilder {
       // 3. Initialize token account
       
       // Create account instruction
-      transaction.add(
+      instructions.push(
         SystemProgram.createAccount({
-          fromPubkey: payer.publicKey,
+          fromPubkey: payer,
           newAccountPubkey: tokenAccount,
           space: accountLen,
           lamports,
@@ -124,7 +125,7 @@ export class TokenAccountBuilder {
       
       // Add extensions
       if (this.extensions.includes(ExtensionType.ImmutableOwner)) {
-        transaction.add(
+        instructions.push(
           createInitializeImmutableOwnerInstruction(
             tokenAccount,
             TOKEN_2022_PROGRAM_ID
@@ -133,7 +134,7 @@ export class TokenAccountBuilder {
       }
       
       if (this.extensions.includes(ExtensionType.DefaultAccountState) && this.defaultAccountState) {
-        transaction.add(
+        instructions.push(
           createInitializeDefaultAccountStateInstruction(
             tokenAccount,
             this.defaultAccountState,
@@ -143,7 +144,7 @@ export class TokenAccountBuilder {
       }
       
       // Finally, initialize token account
-      transaction.add(
+      instructions.push(
         createInitializeAccountInstruction(
           tokenAccount,
           this.mint,
@@ -152,7 +153,38 @@ export class TokenAccountBuilder {
         )
       );
       
-      // 4. Send transaction
+      return {
+        instructions,
+        signers: [tokenAccountKeypair],
+        tokenAccount
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create token account instructions: ${errorMessage}`);
+    }
+  }
+  
+  /**
+   * Create standard (non-associated) token account
+   * 
+   * @param payer - Transaction fee payer
+   * @returns Information about the created token account
+   */
+  async buildStandardAccount(payer: Keypair): Promise<{
+    tokenAccount: PublicKey;
+    tokenAccountKeypair: Keypair;
+    transactionSignature: string;
+  }> {
+    if (!this.mint || !this.owner) {
+      throw new Error("Mint and owner are required. Call setTokenAccountInfo first.");
+    }
+    
+    try {
+      const { instructions, signers, tokenAccount } = await this.buildStandardAccountInstructions(payer.publicKey);
+      const tokenAccountKeypair = signers[0];
+      
+      // Create and send transaction
+      const transaction = new Transaction().add(...instructions);
       const transactionSignature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
@@ -175,17 +207,17 @@ export class TokenAccountBuilder {
   }
   
   /**
-   * Create Associated Token Account with extensions
+   * Create instructions for Associated Token Account with extensions
    * 
    * Note: Not all extensions work with ATA
    * 
-   * @param payer - Transaction fee payer
-   * @returns Information about the created token account
+   * @param payer - Public key of the transaction fee payer
+   * @returns Instructions and token account address
    */
-  async buildAssociatedAccount(payer: Keypair): Promise<{
+  buildAssociatedAccountInstructions(payer: PublicKey): {
+    instructions: TransactionInstruction[];
     tokenAccount: PublicKey;
-    transactionSignature: string;
-  }> {
+  } {
     if (!this.mint || !this.owner) {
       throw new Error("Mint and owner are required. Call setTokenAccountInfo first.");
     }
@@ -200,23 +232,47 @@ export class TokenAccountBuilder {
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
       
-      // 2. Create transaction
-      const transaction = new Transaction();
-      
+      // 2. Create instruction
       // Can only add normal ATA, cannot add extensions directly
       // Some extensions like ImmutableOwner are automatically applied to ATA
-      transaction.add(
+      const instructions = [
         createAssociatedTokenAccountInstruction(
-          payer.publicKey,
+          payer,
           tokenAccount,
           this.owner,
           this.mint,
           TOKEN_2022_PROGRAM_ID,
           ASSOCIATED_TOKEN_PROGRAM_ID
         )
-      );
+      ];
       
-      // 3. Send transaction
+      return {
+        instructions,
+        tokenAccount
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create Associated Token Account instructions: ${errorMessage}`);
+    }
+  }
+  
+  /**
+   * Create Associated Token Account with extensions
+   * 
+   * Note: Not all extensions work with ATA
+   * 
+   * @param payer - Transaction fee payer
+   * @returns Information about the created token account
+   */
+  async buildAssociatedAccount(payer: Keypair): Promise<{
+    tokenAccount: PublicKey;
+    transactionSignature: string;
+  }> {
+    try {
+      const { instructions, tokenAccount } = this.buildAssociatedAccountInstructions(payer.publicKey);
+      
+      // Create and send transaction
+      const transaction = new Transaction().add(...instructions);
       const transactionSignature = await sendAndConfirmTransaction(
         this.connection,
         transaction,

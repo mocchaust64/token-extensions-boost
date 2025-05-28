@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, TransactionSignature } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, TransactionSignature, TransactionInstruction } from "@solana/web3.js";
 import { TokenMetadata } from "@solana/spl-token-metadata";
 import { Token } from "../../core/token";
 export interface MetadataPointerState {
@@ -31,6 +31,23 @@ export type MetadataUpdateResult = {
 export declare class MetadataPointerToken extends Token {
     private metadata;
     constructor(connection: Connection, mint: PublicKey, metadata: MetadataConfig);
+    /**
+     * Create instructions to make a new MetadataPointerToken
+     *
+     * @param connection - Solana connection
+     * @param payer - Public key of the payer
+     * @param params - Parameters for token creation
+     * @returns Instructions, signers, and mint address
+     */
+    static createInstructions(connection: Connection, payer: PublicKey, params: {
+        decimals: number;
+        mintAuthority: PublicKey;
+        metadata: MetadataConfig;
+    }): Promise<{
+        instructions: TransactionInstruction[];
+        signers: Keypair[];
+        mint: PublicKey;
+    }>;
     static create(connection: Connection, payer: Keypair, params: {
         decimals: number;
         mintAuthority: PublicKey;
@@ -39,6 +56,15 @@ export declare class MetadataPointerToken extends Token {
     static fromMint(connection: Connection, mint: PublicKey): Promise<MetadataPointerToken | null>;
     getMetadataPointer(): Promise<MetadataPointerState | null>;
     getTokenMetadata(): Promise<TokenMetadata>;
+    /**
+     * Create instruction to update a metadata field
+     *
+     * @param authority - Update authority public key
+     * @param field - Field name to update
+     * @param value - New value for the field
+     * @returns Transaction instruction
+     */
+    createUpdateMetadataFieldInstruction(authority: PublicKey, field: string, value: string): TransactionInstruction;
     updateMetadataField(authority: Keypair, field: string, value: string): Promise<MetadataUpdateResult>;
     removeMetadataField(authority: Keypair, key: string): Promise<MetadataUpdateResult>;
     updateMetadataPointer(authority: Keypair, newMetadataAddress: PublicKey): Promise<TransactionSignature>;

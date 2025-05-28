@@ -21,6 +21,7 @@ import {
   Connection,
   Transaction,
   sendAndConfirmTransaction,
+  TransactionInstruction,
 } from '@solana/web3.js';
 
 /**
@@ -378,5 +379,163 @@ export class MetadataHelper {
       metadataAddress,
       setupOrder
     };
+  }
+
+  /**
+   * Create instructions for initializing tokens with metadata
+   * 
+   * @param connection - Solana connection
+   * @param payer - Public key of the fee payer
+   * @param params - Initialization parameters
+   * @returns Instructions, signers, and mint address
+   */
+  static async createTokenWithMetadataInstructions(
+    connection: Connection,
+    payer: PublicKey,
+    params: {
+      decimals: number;
+      mintAuthority: PublicKey;
+      name: string;
+      symbol: string;
+      uri: string;
+      additionalMetadata?: Record<string, string>;
+      extensions?: ExtensionType[];
+    }
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    signers: Keypair[];
+    mint: PublicKey;
+  }> {
+    try {
+      // Create keypair for mint account
+      const mintKeypair = Keypair.generate();
+      const mint = mintKeypair.publicKey;
+      console.log(`Creating token with mint address: ${mint.toString()}`);
+      
+      // Prepare metadata
+      const metaData: TokenMetadata = {
+        updateAuthority: payer,
+        mint: mint,
+        name: params.name,
+        symbol: params.symbol,
+        uri: params.uri,
+        additionalMetadata: params.additionalMetadata 
+          ? Object.entries(params.additionalMetadata) 
+          : [],
+      };
+      
+      // Change the size calculation method for the parts
+      const metadataExtension = TYPE_SIZE + LENGTH_SIZE;
+      const metadataLen = pack(metaData).length;
+      
+      // Create extension list to calculate correct size
+      const extensionsToUse = [ExtensionType.MetadataPointer];
+      
+      // Add other extensions if provided
+      if (params.extensions && params.extensions.length > 0) {
+        params.extensions.forEach(ext => {
+          if (!extensionsToUse.includes(ext)) {
+            extensionsToUse.push(ext);
+          }
+        });
+      }
+      
+      // Calculate size based on all extensions
+      const mintLen = getMintLen(extensionsToUse);
+      
+      console.log(`Calculating size for ${extensionsToUse.length} extensions: ${JSON.stringify(extensionsToUse.map(ext => ExtensionType[ext]))}`);
+      console.log(`Size: mint=${mintLen}, metadata extension=${metadataExtension}, metadata=${metadataLen}`);
+      
+      // Calculate required lamports based on total size
+      const lamports = await connection.getMinimumBalanceForRentExemption(
+        mintLen + metadataExtension + metadataLen
+      );
+      
+      // Create array for instructions
+      const instructions: TransactionInstruction[] = [];
+      
+      // 1. Create account
+      instructions.push(
+        SystemProgram.createAccount({
+          fromPubkey: payer,
+          newAccountPubkey: mint,
+          space: mintLen,  // Only need enough for mint with extension
+          lamports, // But need enough lamports for metadata too
+          programId: TOKEN_2022_PROGRAM_ID,
+        })
+      );
+      
+      // 2. Initialize MetadataPointer extension
+      instructions.push(
+        createInitializeMetadataPointerInstruction(
+          mint,
+          payer,  // Update authority
+          mint,  // Metadata address (points to itself)
+          TOKEN_2022_PROGRAM_ID
+        )
+      );
+      
+      // 3. Add NonTransferable extension if included
+      if (params.extensions && params.extensions.includes(ExtensionType.NonTransferable)) {
+        instructions.push(
+          createInitializeNonTransferableMintInstruction(
+            mint,
+            TOKEN_2022_PROGRAM_ID
+          )
+        );
+      }
+
+      // 4. Initialize mint
+      instructions.push(
+        createInitializeMintInstruction(
+          mint,
+          params.decimals,
+          params.mintAuthority,
+          null, // Freeze authority
+          TOKEN_2022_PROGRAM_ID
+        )
+      );
+      
+      // 5. Initialize metadata
+      instructions.push(
+        createInitializeInstruction({
+          programId: TOKEN_2022_PROGRAM_ID,
+          metadata: mint,
+          updateAuthority: payer,
+          mint: mint,
+          mintAuthority: params.mintAuthority,
+          name: params.name,
+          symbol: params.symbol,
+          uri: params.uri,
+        })
+      );
+      
+      // 6. Add additional metadata fields if any
+      if (params.additionalMetadata) {
+        for (const [key, value] of Object.entries(params.additionalMetadata)) {
+          instructions.push(
+            createUpdateFieldInstruction({
+              programId: TOKEN_2022_PROGRAM_ID,
+              metadata: mint,
+              updateAuthority: payer,
+              field: key,
+              value: value,
+            })
+          );
+        }
+      }
+      
+      return {
+        instructions,
+        signers: [mintKeypair],
+        mint
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to create token with metadata instructions: ${error.message}`);
+      } else {
+        throw new Error(`Unknown error creating token with metadata instructions: ${String(error)}`);
+      }
+    }
   }
 } 

@@ -1,4 +1,10 @@
-import { clusterApiUrl, Connection, Keypair } from "@solana/web3.js";
+import { 
+  Connection, 
+  Keypair, 
+  PublicKey, 
+  clusterApiUrl,
+  Transaction,
+} from '@solana/web3.js';
 import * as fs from "fs";
 import * as path from "path";
 import { TokenBuilder, Token } from "../../src";
@@ -49,10 +55,34 @@ async function main() {
     );
   
   console.log("Đang tạo token với nhiều extension...");
-  const { mint, token, transactionSignature } = await tokenBuilder.createToken(payer);
+  const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+  
+  // Tạo và ký transaction
+  const transaction = new Transaction().add(...instructions);
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
+  transaction.feePayer = payer.publicKey;
+  
+  // Ký và gửi transaction
+  transaction.sign(...signers, payer);
+  const transactionSignature = await connection.sendRawTransaction(
+    transaction.serialize(),
+    { skipPreflight: false }
+  );
+  
+  // Đợi xác nhận
+  await connection.confirmTransaction({
+    signature: transactionSignature,
+    blockhash,
+    lastValidBlockHeight
+  });
   
   console.log(`Token đã được tạo: ${mint.toString()}`);
   console.log(`Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`);
+  
+  // Tạo đối tượng Token từ mint address
+  const token = new Token(connection, mint);
   
   // Đợi một chút để đảm bảo transaction được xác nhận
   console.log("Đợi để xác nhận transaction...");

@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair, Transaction, sendAndConfirmTransaction, Signer } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair, Transaction, sendAndConfirmTransaction, Signer, TransactionInstruction } from "@solana/web3.js";
 import { 
   TOKEN_2022_PROGRAM_ID, 
   burn, 
@@ -9,7 +9,10 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   getAccount,
-  TokenAccountNotFoundError
+  TokenAccountNotFoundError,
+  createMintToInstruction,
+  createTransferCheckedInstruction,
+  createBurnCheckedInstruction
 } from "@solana/spl-token";
 
 export class Token {
@@ -31,6 +34,29 @@ export class Token {
 
   getProgramId(): PublicKey {
     return TOKEN_2022_PROGRAM_ID;
+  }
+
+  /**
+   * Tạo instruction mint token vào tài khoản
+   * 
+   * @param destination - Địa chỉ tài khoản nhận token
+   * @param authority - Authority được phép mint token
+   * @param amount - Số lượng token cần mint
+   * @returns TransactionInstruction
+   */
+  createMintToInstruction(
+    destination: PublicKey,
+    authority: PublicKey,
+    amount: bigint
+  ): TransactionInstruction {
+    return createMintToInstruction(
+      this.mint,
+      destination,
+      authority,
+      amount,
+      [],
+      this.getProgramId()
+    );
   }
 
   /**
@@ -65,6 +91,31 @@ export class Token {
     } catch (error: any) {
       throw new Error(`Could not mint tokens: ${error.message}`);
     }
+  }
+
+  /**
+   * Tạo instruction mint token với kiểm tra decimals
+   * 
+   * @param destination - Địa chỉ tài khoản nhận token
+   * @param authority - Authority được phép mint token
+   * @param amount - Số lượng token cần mint
+   * @param decimals - Số decimals của token
+   * @returns TransactionInstruction
+   */
+  createMintToCheckedInstruction(
+    destination: PublicKey,
+    authority: PublicKey,
+    amount: bigint,
+    decimals: number
+  ): TransactionInstruction {
+    return createMintToInstruction(
+      this.mint,
+      destination,
+      authority,
+      amount,
+      [],
+      this.getProgramId()
+    );
   }
 
   /**
@@ -105,6 +156,78 @@ export class Token {
   }
 
   /**
+   * Tạo các instructions để tạo tài khoản token và mint token vào tài khoản đó
+   * 
+   * @param owner - Chủ sở hữu tài khoản token
+   * @param payer - Payer public key
+   * @param amount - Số lượng token cần mint
+   * @param mintAuthority - Authority được phép mint token
+   * @returns Thông tin về instructions và địa chỉ tài khoản token
+   */
+  async createAccountAndMintToInstructions(
+    owner: PublicKey,
+    payer: PublicKey,
+    amount: bigint,
+    mintAuthority: PublicKey
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    address: PublicKey;
+  }> {
+    try {
+      // Lấy địa chỉ associated token account
+      const address = await getAssociatedTokenAddress(
+        this.mint, 
+        owner, 
+        true, // Cho phép sở hữu bởi PDA
+        this.getProgramId()
+      );
+      
+      const instructions: TransactionInstruction[] = [];
+      
+      // Kiểm tra xem tài khoản đã tồn tại chưa
+      let accountExists = false;
+      try {
+        await getAccount(this.connection, address, 'recent', this.getProgramId());
+        accountExists = true;
+      } catch (error: any) {
+        if (!(error instanceof TokenAccountNotFoundError)) {
+          throw error;
+        }
+        // Tài khoản chưa tồn tại, cần tạo mới
+      }
+      
+      // Nếu tài khoản chưa tồn tại, thêm instruction tạo tài khoản
+      if (!accountExists) {
+        instructions.push(
+          createAssociatedTokenAccountInstruction(
+            payer, 
+            address, 
+            owner, 
+            this.mint, 
+            this.getProgramId()
+          )
+        );
+      }
+      
+      // Thêm instruction mint token
+      instructions.push(
+        createMintToInstruction(
+          this.mint,
+          address,
+          mintAuthority,
+          amount,
+          [],
+          this.getProgramId()
+        )
+      );
+      
+      return { instructions, address };
+    } catch (error: any) {
+      throw new Error(`Could not create account and mint instructions: ${error.message}`);
+    }
+  }
+
+  /**
    * Tạo tài khoản token và mint token vào tài khoản đó
    * 
    * @param owner - Chủ sở hữu tài khoản token
@@ -140,6 +263,32 @@ export class Token {
     } catch (error: any) {
       throw new Error(`Could not create account and mint tokens: ${error.message}`);
     }
+  }
+
+  /**
+   * Tạo instruction đốt (burn) một số lượng token từ tài khoản
+   * 
+   * @param account - Địa chỉ tài khoản chứa token cần đốt
+   * @param owner - Chủ sở hữu của tài khoản
+   * @param amount - Số lượng token cần đốt
+   * @param decimals - Số decimals của token 
+   * @returns TransactionInstruction để đốt token
+   */
+  createBurnInstruction(
+    account: PublicKey,
+    owner: PublicKey,
+    amount: bigint,
+    decimals: number
+  ): TransactionInstruction {
+    return createBurnCheckedInstruction(
+      account,
+      this.mint,
+      owner,
+      amount,
+      decimals,
+      [],
+      this.getProgramId()
+    );
   }
 
   /**
@@ -207,6 +356,35 @@ export class Token {
     } catch (error: any) {
       throw new Error(`Could not burn tokens with decimals check: ${error.message}`);
     }
+  }
+
+  /**
+   * Tạo instruction chuyển token với kiểm tra decimals
+   * 
+   * @param source - Địa chỉ tài khoản nguồn
+   * @param destination - Địa chỉ tài khoản đích
+   * @param owner - Chủ sở hữu tài khoản nguồn
+   * @param amount - Số lượng token cần chuyển
+   * @param decimals - Số decimals của token
+   * @returns TransactionInstruction
+   */
+  createTransferInstruction(
+    source: PublicKey,
+    destination: PublicKey,
+    owner: PublicKey,
+    amount: bigint,
+    decimals: number
+  ): TransactionInstruction {
+    return createTransferCheckedInstruction(
+      source,
+      this.mint,
+      destination,
+      owner,
+      amount,
+      decimals,
+      [],
+      this.getProgramId()
+    );
   }
 
   /**

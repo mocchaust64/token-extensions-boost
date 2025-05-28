@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * Ví dụ tạo token với MintCloseAuthority và thử đóng mint account
+ * Ví dụ tạo token với MintCloseAuthority và đóng mint account
  */
 async function main() {
   try {
@@ -41,7 +41,7 @@ async function main() {
       .setTokenInfo(
         9, // decimals
         payer.publicKey, // mint authority
-        payer.publicKey  // freeze authority
+        null // không cần freeze authority
       )
       // Thêm metadata
       .addMetadata(
@@ -50,14 +50,37 @@ async function main() {
         "https://example.com/metadata.json",
         { "description": "Token với MintCloseAuthority" }
       )
-      // Thêm MintCloseAuthority - cho phép đóng mint account
+      // Thêm MintCloseAuthority - cho phép đóng mint account sau này
       .addMintCloseAuthority(payer.publicKey);
     
-    // Tạo token
+    // Tạo token sử dụng API mới
     console.log('Đang tạo token...');
-    const { mint, transactionSignature, token } = 
-      await tokenBuilder.createToken(payer);
     
+    // Lấy instructions thay vì tạo token trực tiếp
+    const { instructions, signers, mint } = 
+      await tokenBuilder.createTokenInstructions(payer.publicKey);
+    
+    // Tạo và ký transaction
+    const transaction = new Transaction().add(...instructions);
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    transaction.feePayer = payer.publicKey;
+    
+    // Ký và gửi transaction
+    transaction.sign(...signers, payer);
+    const transactionSignature = await connection.sendRawTransaction(
+      transaction.serialize(),
+      { skipPreflight: false }
+    );
+    
+    // Đợi xác nhận
+    await connection.confirmTransaction({
+      signature: transactionSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
     console.log(`Token tạo thành công!`);
     console.log(`Địa chỉ mint: ${mint.toBase58()}`);
     console.log(`Chữ ký giao dịch: ${transactionSignature}`);

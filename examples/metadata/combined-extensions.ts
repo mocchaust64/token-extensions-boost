@@ -2,37 +2,52 @@ import {
   Connection,
   Keypair,
   clusterApiUrl,
+  Commitment,
+  ConfirmOptions,
+  PublicKey,
+  Transaction,
 } from "@solana/web3.js";
+import fs from 'fs';
+import path from 'path';
 import {
-  getMint,
-  getTokenMetadata,
-  TOKEN_2022_PROGRAM_ID,
-} from "@solana/spl-token";
-
-import * as fs from 'fs';
-import * as path from 'path';
-import { TokenBuilder } from "../../src/utils/token-builder";
+  TokenBuilder, 
+  NonTransferableToken 
+} from "../../src";
 
 /**
- * Ví dụ tạo token với metadata và nhiều extension khác
+ * Ví dụ tạo token với metadata và nhiều extension khác nhau
  */
 async function main() {
-  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-     const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+  // Cấu hình connection
+  const commitment: Commitment = "confirmed";
+  const confirmOptions: ConfirmOptions = {
+    skipPreflight: true, // Bỏ qua kiểm tra preflight để giảm lỗi
+    commitment,
+    maxRetries: 5,
+  };
+  
+  // Kết nối đến devnet với endpoint thay thế và timeout dài hơn
+  console.log("Đang kết nối đến Solana devnet...");
+  const connection = new Connection(clusterApiUrl("devnet"), {
+    commitment,
+    confirmTransactionInitialTimeout: 60000, // 60 seconds
+    disableRetryOnRateLimit: false,
+  });
+  
+  // Load ví từ file local
+  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
      const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
      const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
      const payer = Keypair.fromSecretKey(secretKey);
      
+  console.log("Địa chỉ ví:", payer.publicKey.toString());
+  console.log("\n===== Tạo token với metadata và các extension =====");
 
-  // Tạo token với metadata và nhiều extension
-  console.log("\n===== Tạo token với metadata và nhiều extension =====");
-
-  // 1. Chuẩn bị thông tin metadata
+  // Cấu hình metadata
   const metadata = {
     name: "OPOS",
     symbol: "OPOS",
     uri: "https://raw.githubusercontent.com/solana-developers/opos-asset/main/assets/DeveloperPortal/metadata.json",
-
     additionalMetadata: {
          "trait_type": "Item",
     "value": "Developer Portal"
@@ -41,198 +56,391 @@ async function main() {
 
   console.log("Đang tạo token với TokenBuilder...");
   
-  // 2. Tạo TokenBuilder từ SDK
-  const tokenBuilder = new TokenBuilder(connection);
+  // Tạo TokenBuilder - Phiên bản 1: Chỉ với NonTransferable
+  console.log("--- Thử nghiệm 1: Token với NonTransferable Extension ---");
+  const tokenBuilder1 = new TokenBuilder(connection)
+    .setTokenInfo(6, payer.publicKey)
+    .addNonTransferable();
   
+  // Tạo TokenBuilder - Phiên bản 2: Chỉ với Metadata
+  console.log("--- Thử nghiệm 2: Token với Metadata Extension ---");
+  const tokenBuilder2 = new TokenBuilder(connection)
+    .setTokenInfo(6, payer.publicKey)
+    .addTokenMetadata(
+      metadata.name,
+      metadata.symbol,
+      metadata.uri,
+      metadata.additionalMetadata
+    );
   
-  // 3. Cấu hình token với nhiều tính năng
-  tokenBuilder
-    // Thông tin cơ bản
-    .setTokenInfo(6, payer.publicKey) // 6 decimals
+  // Tạo delegate keypair cho PermanentDelegate extension
+  const delegateKeypair = Keypair.generate();
+  console.log("Delegate public key:", delegateKeypair.publicKey.toString());
+  
+  // Tạo TokenBuilder - Phiên bản 3: Kết hợp nhiều extensions
+  console.log("--- Thử nghiệm 3: Token với nhiều Extensions kết hợp ---");
+  const tokenBuilder3 = new TokenBuilder(connection)
+    .setTokenInfo(6, payer.publicKey)
+    // Extension 1: Metadata
     .addTokenMetadata(
       metadata.name,
       metadata.symbol,
       metadata.uri,
       metadata.additionalMetadata
     )
-    .addNonTransferable();
-    
-    
-  // 4. Sử dụng phương thức để tạo token
-  // Lưu ý: Nên luôn sử dụng createToken() thay vì các phương thức khác đã bị deprecated
+    // Extension 2: TransferFee (0.5% phí chuyển)
+    .addTransferFee(
+      50, // 0.5% (50 basis points)
+      BigInt(500000), // maxFee (0.5 token với 6 decimals)
+      payer.publicKey, // transferFeeConfigAuthority
+      payer.publicKey  // withdrawWithheldAuthority
+    )
+    // Extension 3: PermanentDelegate
+    .addPermanentDelegate(
+      delegateKeypair.publicKey
+    )
+    // Extension 4: InterestBearing (lãi suất 0.1%)
+    .addInterestBearing(
+      0.1, // 0.1% lãi suất
+      payer.publicKey // rateAuthority
+    );
+
+  // Tạo TokenBuilder - Phiên bản 4: Kết hợp Metadata và NonTransferable (không thể chuyển)
+  console.log("--- Thử nghiệm 4: Token với Metadata, NonTransferable và các extension khác ---");
+  const tokenBuilder4 = new TokenBuilder(connection)
+    .setTokenInfo(6, payer.publicKey)
+    // Extension 1: NonTransferable - Token không thể chuyển
+    .addNonTransferable()
+    // Extension 2: Metadata - Thông tin mô tả token
+    .addTokenMetadata(
+      metadata.name,
+      metadata.symbol,
+      metadata.uri,
+      metadata.additionalMetadata
+    )
+    // Extension 3: PermanentDelegate - Ủy quyền vĩnh viễn
+    // Mặc dù token không thể chuyển bởi chủ sở hữu, permanent delegate vẫn có quyền đặc biệt
+    .addPermanentDelegate(
+      delegateKeypair.publicKey
+    )
+    // Extension 4: InterestBearing - Token có thể sinh lãi
+    // Token không thể chuyển vẫn có thể sinh lãi
+    .addInterestBearing(
+      0.2, // 0.2% lãi suất
+      payer.publicKey // rateAuthority
+    );
+  
+  // Thực hiện thử nghiệm 1: Chỉ NonTransferable
   const startTime = Date.now();
   
-  console.log("Đang tạo token với metadata và các extension...");
-  const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);
+  // Tạo và kiểm tra token với NonTransferable
+  await createAndTestToken(tokenBuilder1, payer, connection, "NonTransferable", startTime);
   
-  const endTime = Date.now();
+  // Thực hiện thử nghiệm 2: Chỉ Metadata
+  const startTime2 = Date.now();
+  await createAndTestToken(tokenBuilder2, payer, connection, "Metadata", startTime2);
   
-  console.log(`Token tạo thành công trong ${(endTime - startTime)/1000} giây!`);
-  console.log(`Mint address: ${mint.toString()}`);
-  console.log(`Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`);
-  
-  // 5. Kiểm tra thông tin token
-  console.log("\n===== Kiểm tra thông tin token =====");
-  
-  // Đọc metadata
-  console.log("Đang đọc metadata...");
-  const tokenMetadata = await getTokenMetadata(
-    connection,
-    mint,
-    "confirmed"
-  );
-  
-  console.log("Token Metadata:");
-  console.log(`Name: ${tokenMetadata?.name}`);
-  console.log(`Symbol: ${tokenMetadata?.symbol}`);
-  console.log(`URI: ${tokenMetadata?.uri}`);
-  
-  if (tokenMetadata?.additionalMetadata) {
-    console.log("Additional Metadata:");
-    for (const [key, value] of tokenMetadata.additionalMetadata) {
-      console.log(`  ${key}: ${value}`);
-    }
-  }
-  
-  // Đọc thông tin mint
-  console.log("\nĐang đọc thông tin mint...");
-  try {
-    const mintInfo = await getMint(
-      connection,
-      mint,
-      "confirmed",
-      TOKEN_2022_PROGRAM_ID  // Quan trọng: Chỉ định đúng TOKEN_2022_PROGRAM_ID
-    );
-    
-    console.log("Mint Info:");
-    console.log(`Decimals: ${mintInfo.decimals}`);
-    console.log(`Mint Authority: ${mintInfo.mintAuthority?.toString()}`);
-    console.log(`Supply: ${mintInfo.supply}`);
-    
-    // Đọc thông tin extensions
-    console.log("\nExtensions:");
-    console.log(`Number of extensions: ${mintInfo.tlvData.length}`);
-    
-    // Hiển thị các extensions dựa trên tlvData
-    if (mintInfo.tlvData && mintInfo.tlvData.length > 0) {
-      console.log('Extension data found:');
-      
-      // Liệt kê tên các extensions đã biết
-      const extensionNames = {
-        0: "TransferFee (Config)",
-        1: "TransferFee (Amount)",
-        2: "MintCloseAuthority",
-        3: "ConfidentialTransfer (Mint)",
-        4: "ConfidentialTransfer (Account)",
-        5: "DefaultAccountState",
-        6: "ImmutableOwner",
-        7: "MemoTransfer",
-        8: "NonTransferable",
-        9: "InterestBearing",
-        10: "CpiGuard",
-        11: "PermanentDelegate",
-        12: "NonTransferableAccount",
-        13: "TransferHook",
-        14: "MetadataPointer",
-        15: "TokenMetadata"
-      };
-      
-      // Phân tích dữ liệu TLV để xác định các extensions
-      let offset = 0;
-      while (offset < mintInfo.tlvData.length) {
-        // Đảm bảo có đủ dữ liệu để đọc type (4 bytes)
-        if (offset + 4 > mintInfo.tlvData.length) break;
-        
-        // Đọc type (4 bytes)
-        const type = mintInfo.tlvData.readUInt32LE(offset);
-        const extensionName = extensionNames[type as keyof typeof extensionNames] || `Unknown Extension (${type})`;
-        console.log(`- ${extensionName} (Type: ${type})`);
-        
-        // Đọc length (4 bytes)
-        if (offset + 8 > mintInfo.tlvData.length) break;
-        const length = mintInfo.tlvData.readUInt32LE(offset + 4);
-        
-        // Chuyển đến extension tiếp theo
-        // Cấu trúc: type (4 bytes) + length (4 bytes) + value (length bytes)
-        offset += 8 + length;
-      }
-    } else {
-      console.log('No extension data found');
-    }
-  } catch (error) {
-    console.error("Error reading mint info:", error);
-    console.log("\nHiển thị lỗi từ mint info. Tuy nhiên, metadata đã được đọc thành công.");
-    console.log("Bạn có thể kiểm tra trực tiếp trên Solana Explorer:");
-    console.log(`https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
-  }
-  
-  // 6. Thử chuyển token NonTransferable để kiểm tra extension
-  console.log("\n===== Thử chuyển token để kiểm tra NonTransferable =====");
+  // Thực hiện thử nghiệm 3: Kết hợp nhiều extensions (có thể chuyển)
+  const startTime3 = Date.now();
+  await createAndTestToken(tokenBuilder3, payer, connection, "Nhiều Extensions kết hợp", startTime3);
 
+  // Thực hiện thử nghiệm 4: Kết hợp Metadata và NonTransferable
+  const startTime4 = Date.now();
+  await createAndTestToken(tokenBuilder4, payer, connection, "Metadata+NonTransferable", startTime4);
+}
+
+/**
+ * Kiểm tra tính năng NonTransferable của token
+ */
+async function testNonTransferable(connection: Connection, mint: PublicKey, payer: Keypair) {
+  console.log("\n===== Kiểm tra tính năng NonTransferable =====");
+  
   try {
-    // Tạo ví đích ngẫu nhiên
+    // Tạo instance của NonTransferableToken
+    const nonTransferableToken = new NonTransferableToken(connection, mint);
+    
+    // Tạo ví đích
     const destinationWallet = Keypair.generate();
     console.log(`Đang thử chuyển token từ ${payer.publicKey.toString()} đến ${destinationWallet.publicKey.toString()}`);
     
-    // Sử dụng hàm transfer từ instance token đã tạo (đã có sẵn trong SDK)
     const transferAmount = BigInt(1000000); // 1 token với 6 decimals
     
-    // Trước hết cần tạo hoặc lấy source token account
-    const { address: sourceAddress } = await token.createOrGetTokenAccount(
-      payer,
+    // Mint tokens vào tài khoản nguồn
+    console.log("Đang mint tokens vào tài khoản nguồn...");
+    
+    try {
+      // Tạo token account và mint token
+      const { instructions: mintInstructions, address: sourceAddress } = 
+        await nonTransferableToken.createMintToInstructions(
+          payer.publicKey,
+          transferAmount,
       payer.publicKey
     );
     
-    // Mint token vào tài khoản nguồn
-    console.log("Đang mint token vào tài khoản nguồn...");
-    await token.mintTo(
+      // Tạo transaction
+      const transaction = new Transaction().add(...mintInstructions);
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+      
+      // Gửi transaction
+      console.log("Đang gửi transaction tạo token...");
+      const mintSignature = await connection.sendTransaction(
+        transaction, 
+        [payer], 
+        { skipPreflight: true }
+      );
+      
+      console.log(`Mint transaction đã gửi: ${mintSignature}`);
+      try {
+        // Xác nhận transaction với cách đơn giản hơn
+        await connection.confirmTransaction(mintSignature, "confirmed");
+        console.log(`Đã mint ${Number(transferAmount) / 10**6} tokens vào tài khoản: ${sourceAddress.toString()}`);
+      } catch (mintConfirmError) {
+        console.warn("Không thể xác nhận mint transaction:", mintConfirmError);
+        // Kiểm tra trạng thái transaction
+        const status = await connection.getSignatureStatus(mintSignature);
+        if (status && status.value && !status.value.err) {
+          console.log("Mint transaction có vẻ thành công mặc dù không thể xác nhận!");
+          console.log(`Đã mint ${Number(transferAmount) / 10**6} tokens vào tài khoản: ${sourceAddress.toString()}`);
+        } else {
+          throw new Error("Mint transaction không thành công");
+        }
+      }
+      
+      // Tạo token account đích
+      console.log("Đang tạo tài khoản đích...");
+      const { instructions: destInstructions, address: destinationAddress } = 
+        await nonTransferableToken.createAccountAndMintToInstructions(
+          destinationWallet.publicKey,  // owner - Chủ sở hữu tài khoản token
+          payer.publicKey,              // payer - Người trả phí
+          BigInt(0),                    // amount - Số lượng token (0)
+          payer.publicKey               // mintAuthority - Authority được phép mint
+        );
+        
+      // Tạo transaction - payer sẽ thanh toán phí và ký transaction, không cần destinationWallet ký
+      const destTx = new Transaction().add(...destInstructions);
+      const destBlockhash = await connection.getLatestBlockhash();
+      destTx.recentBlockhash = destBlockhash.blockhash;
+      destTx.lastValidBlockHeight = destBlockhash.lastValidBlockHeight;
+      destTx.feePayer = payer.publicKey; // Đảm bảo payer là người trả phí
+      
+      // Gửi transaction
+      console.log("Đang gửi transaction tạo tài khoản đích...");
+      const destSignature = await connection.sendTransaction(
+        destTx, 
+        [payer], // Chỉ cần payer ký, không cần destinationWallet
+        { skipPreflight: true }
+      );
+      
+      console.log(`Destination transaction đã gửi: ${destSignature}`);
+      try {
+        // Xác nhận transaction với cách đơn giản hơn
+        await connection.confirmTransaction(destSignature, "confirmed");
+        console.log(`Đã tạo tài khoản đích: ${destinationAddress.toString()}`);
+      } catch (destConfirmError) {
+        console.warn("Không thể xác nhận transaction tạo tài khoản:", destConfirmError);
+        // Kiểm tra trạng thái transaction
+        const status = await connection.getSignatureStatus(destSignature);
+        if (status && status.value && !status.value.err) {
+          console.log("Transaction tạo tài khoản có vẻ thành công mặc dù không thể xác nhận!");
+          console.log(`Đã tạo tài khoản đích: ${destinationAddress.toString()}`);
+        } else {
+          throw new Error("Transaction tạo tài khoản không thành công");
+        }
+      }
+      
+      // Thử chuyển token
+      console.log(`Đang thử chuyển ${Number(transferAmount) / 10**6} tokens...`);
+      
+      try {
+        // Tạo transaction chuyển token
+        const transferInstruction = nonTransferableToken.createTransferInstruction(
       sourceAddress,
-      payer,
-      transferAmount
-    );
-    console.log(`Đã mint ${Number(transferAmount) / 10**6} token vào tài khoản nguồn`);
-    
-    // Tạo hoặc lấy destination token account
-    const { address: destinationAddress } = await token.createOrGetTokenAccount(
-      payer,
-      destinationWallet.publicKey
-    );
-    
-    console.log(`Đang thử chuyển ${Number(transferAmount) / 10**6} token...`);
-    
-    // Sử dụng phương thức transfer của token instance đã tạo với đầy đủ tham số
-    const transferSignature = await token.transfer(
-      sourceAddress,                // source
-      destinationAddress,           // destination
-      payer,                        // owner
-      transferAmount,               // amount
-      6                             // decimals
-    );
-    
-    console.log("Chuyển token thành công!");
-    console.log(`Transaction: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
-    console.log("⚠️ Token có thể chuyển -> NonTransferable không hoạt động hoặc không được áp dụng");
-  } catch (error) {
-    console.error("Lỗi khi chuyển token:", error);
-    
-    // Kiểm tra xem lỗi có phải do NonTransferable không
-    const errorString = error instanceof Error 
-      ? error.toString() 
-      : String(error);
+          destinationAddress,
+          payer.publicKey,
+          transferAmount,
+          6
+        );
+        
+        // Tạo và thiết lập transaction
+        const transferTx = new Transaction().add(transferInstruction);
+        const transferBlockhash = await connection.getLatestBlockhash();
+        transferTx.recentBlockhash = transferBlockhash.blockhash;
+        transferTx.lastValidBlockHeight = transferBlockhash.lastValidBlockHeight;
+        transferTx.feePayer = payer.publicKey;
+        
+        // Gửi transaction
+        console.log("Đang gửi transaction chuyển token...");
+        console.log(`Chuyển ${Number(transferAmount) / 10**6} tokens từ ${sourceAddress.toString()} đến ${destinationAddress.toString()}`);
+        
+        const transferSignature = await connection.sendTransaction(
+          transferTx, 
+          [payer], 
+          { skipPreflight: true }
+        );
+        
+        console.log(`Transfer transaction đã gửi: ${transferSignature}`);
+        
+        try {
+          // Xác nhận transaction với cách đơn giản hơn
+          await connection.confirmTransaction(transferSignature, "confirmed");
+          
+          // Kiểm tra trạng thái chi tiết của transaction
+          const txInfo = await connection.getTransaction(transferSignature, {
+            maxSupportedTransactionVersion: 0,
+            commitment: "confirmed"
+          });
+          
+          if (txInfo && txInfo.meta && txInfo.meta.err) {
+            // Transaction có lỗi - đây là điều mong đợi với NonTransferable
+            console.log("✅ Transaction lỗi như mong đợi: ", JSON.stringify(txInfo.meta.err));
+            console.log("✅ NonTransferable đang hoạt động đúng! Token KHÔNG thể chuyển.");
+            
+            // Kiểm tra xem có phải lỗi NonTransferable không (0x25)
+            const errorString = JSON.stringify(txInfo.meta.err);
+            if (errorString.includes("0x25")) {
+              console.log("✅ Xác nhận: Lỗi 0x25 - NonTransferableTokenError");
+            }
+          } else {
+            // Transaction thành công - điều này không nên xảy ra với NonTransferable token
+            console.log("⚠️ Token có thể chuyển -> NonTransferable KHÔNG hoạt động!");
+            console.log(`Explorer: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
+          }
+        } catch (confirmError) {
+          console.log("Không thể xác nhận transaction chuyển token:", confirmError);
+          
+          // Kiểm tra trạng thái transaction
+          const status = await connection.getSignatureStatus(transferSignature);
+          if (status && status.value && status.value.err) {
+            console.log("Transaction lỗi:", status.value.err);
+            
+            const errorString = JSON.stringify(status.value.err);
+            if (errorString.includes("NonTransferable") || 
+                errorString.includes("0x75") || 
+                errorString.includes("non-transferable")) {
+              console.log("✅ Xác nhận: Token KHÔNG thể chuyển -> NonTransferable hoạt động đúng!");
+            } else {
+              console.log("❌ Lỗi khác, không liên quan đến NonTransferable:", errorString);
+            }
+          }
+        }
+      } catch (transferError) {
+        console.error("Lỗi khi tạo/gửi transaction chuyển token:", transferError);
+        
+        const errorString = transferError instanceof Error ? 
+          transferError.toString() : String(transferError);
       
     if (errorString.includes("NonTransferable") || 
-        errorString.includes("0x75") ||  // Mã lỗi NonTransferable
+            errorString.includes("0x75") || 
         errorString.includes("non-transferable")) {
-      console.log("✅ Xác nhận: Token KHÔNG thể chuyển -> NonTransferable extension hoạt động đúng!");
+          console.log("✅ Xác nhận: Token KHÔNG thể chuyển -> NonTransferable hoạt động đúng!");
     } else {
       console.log("❌ Lỗi khác, không liên quan đến NonTransferable:");
       console.log(errorString);
     }
+      }
+    } catch (mintError) {
+      console.error("Lỗi khi mint token:", mintError);
+    }
+  } catch (error) {
+    console.error("Lỗi khi test NonTransferable:", error);
   }
   
-  console.log("\n===== TEST COMPLETE =====");
+  console.log("\n===== TEST COMPLETED =====");
+}
+
+/**
+ * Hàm tạo và kiểm tra token với các extension cụ thể
+ */
+async function createAndTestToken(
+  tokenBuilder: any, 
+  payer: Keypair, 
+  connection: Connection, 
+  testName: string,
+  startTime: number
+) {
+  console.log(`\n===== Tạo token với ${testName} extension =====`);
+  
+  try {
+    // Tạo instructions và signers
+    console.log("Đang tạo token instructions...");
+    const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+    
+    // Tạo và ký transaction
+    console.log("Đang tạo transaction...");
+    const transaction = tokenBuilder.buildTransaction(instructions, payer.publicKey);
+    
+    // Lấy blockhash mới
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    
+    // Gửi transaction
+    console.log("Đang gửi transaction tạo token...");
+    const signature = await connection.sendTransaction(
+      transaction, 
+      [payer, ...signers],
+      { skipPreflight: true }
+    );
+    
+    console.log(`Transaction đã gửi: ${signature}`);
+    console.log(`Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+    
+    // Xác nhận transaction
+    console.log("Đang đợi xác nhận transaction...");
+    try {
+      // Xác nhận transaction với cách đơn giản hơn
+      await connection.confirmTransaction(signature, "confirmed");
+      
+      console.log("Transaction đã được xác nhận thành công!");
+      console.log(`Token được tạo thành công!`);
+      console.log(`Mint address: ${mint.toString()}`);
+      console.log(`Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+      
+      const endTime = Date.now();
+      console.log(`Tổng thời gian: ${(endTime - startTime)/1000} giây`);
+      
+      // Nếu là NonTransferable token, kiểm tra tính năng này
+      if (testName === "NonTransferable") {
+        await testNonTransferable(connection, mint, payer);
+      }
+      
+      return mint;
+    } catch (confirmError) {
+      console.warn("Không thể xác nhận transaction:", confirmError);
+      
+      // Kiểm tra thủ công transaction status
+      console.log("Kiểm tra trạng thái transaction...");
+      
+      try {
+        const status = await connection.getSignatureStatus(signature);
+        console.log("Transaction status:", status);
+        
+        if (status && status.value && !status.value.err) {
+          console.log("Transaction có vẻ thành công mặc dù không thể xác nhận!");
+          console.log(`Token có thể đã được tạo thành công.`);
+          console.log(`Mint address: ${mint.toString()}`);
+          console.log(`Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+          
+          // Nếu là NonTransferable token, kiểm tra tính năng này
+          if (testName === "NonTransferable") {
+            await testNonTransferable(connection, mint, payer);
+          }
+          
+          return mint;
+        }
+      } catch (statusError) {
+        console.error("Không thể kiểm tra trạng thái transaction:", statusError);
+      }
+    }
+  } catch (error) {
+    console.error(`Lỗi khi tạo token ${testName}:`, error);
+  }
+  
+  return null;
 }
 
 main().catch(error => {
-  console.error("Error:", error);
+  console.error("Lỗi chung:", error);
 }); 

@@ -2,17 +2,25 @@ import {
   Connection,
   Keypair,
   clusterApiUrl,
+  Transaction,
 } from '@solana/web3.js';
 import { 
   TOKEN_2022_PROGRAM_ID, 
   createMint, 
   mintTo, 
   AuthorityType, 
-  setAuthority 
+  setAuthority,
+  createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccount,
+  getAssociatedTokenAddress,
+  createTransferCheckedInstruction,
+  getOrCreateAssociatedTokenAccount,
+  getAccount
 } from '@solana/spl-token';
 import { TokenAccount } from '../../src';
 import fs from 'fs';
 import path from 'path';
+import { TokenBuilder } from '../../src';
 
 // Hàm main
 async function main() {
@@ -26,21 +34,42 @@ async function main() {
     // ============== Tạo token cho ví dụ ==============
     console.log('\n1. Tạo token mới...');
     
-    const mintKeypair = Keypair.generate();
+    // Tạo TokenBuilder với connection
+    const tokenBuilder = new TokenBuilder(connection)
+      .setTokenInfo(
+        9, // decimals
+        payer.publicKey, // mint authority
+        null // không cần freeze authority
+      );
     
-    // Tạo token mint
-    const mint = await createMint(
-      connection,
-      payer,
-      payer.publicKey, // mint authority
-      null, // freeze authority (none)
-      9, // decimals
-      mintKeypair,
-      undefined,
-      TOKEN_2022_PROGRAM_ID
+    // Tạo token với metadata và các extensions khác
+    console.log('Tạo token...');
+    
+    // Tạo token sử dụng API mới
+    // Lấy instructions thay vì tạo token trực tiếp
+    const { instructions, signers, mint } = 
+      await tokenBuilder.createTokenInstructions(payer.publicKey);
+    
+    // Tạo và ký transaction
+    const tokenTransaction = new Transaction().add(...instructions);
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    tokenTransaction.recentBlockhash = blockhash;
+    tokenTransaction.lastValidBlockHeight = lastValidBlockHeight;
+    tokenTransaction.feePayer = payer.publicKey;
+    
+    // Ký và gửi transaction
+    tokenTransaction.sign(...signers, payer);
+    const tokenSignature = await connection.sendRawTransaction(
+      tokenTransaction.serialize(),
+      { skipPreflight: false }
     );
     
-    console.log(`Token created with mint address: ${mint.toBase58()}`);
+    // Đợi xác nhận
+    await connection.confirmTransaction({
+      signature: tokenSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
     
     // ============== Tạo token account thông thường ==============
     console.log('\n2. Tạo token account thông thường...');

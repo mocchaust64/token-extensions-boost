@@ -10,19 +10,18 @@ Solana Token Extensions (Token-2022) introduce a variety of new features to toke
 
 The SDK currently supports the following Token Extensions:
 
-- **Transfer Fee**: Create tokens with automatic transfer fees  
-- **Metadata Pointer**: Store and manage metadata for tokens  
-- **Immutable Owner**: Create token accounts with immutable ownership  
-- **Confidential Transfer**: Execute confidential token transfers that hide amounts  
-- **Permanent Delegate**: Permanently delegate token management authority to another address
-- **Transfer Hook**: Execute custom logic on token transfers through a separate program
+- **Transfer Fee**: Create tokens with automatic transfer fees
+- **Metadata Pointer**: Store and manage metadata for tokens
 - **Non-Transferable**: Create non-transferable tokens (soulbound tokens)
+- **Permanent Delegate**: Permanently delegate token management authority to another address
 - **Interest-Bearing**: Create tokens that accrue interest over time
+- **Transfer Hook**: Execute custom logic on token transfers through a separate program
+- **Confidential Transfer**: Execute confidential token transfers that hide amounts
 - **Multiple Extensions**: Create tokens with multiple extensions at once, including metadata
 
 ## Core Token Features
 
-The base Token class now provides the following core functionality:
+The base Token class provides the following core functionality:
 
 - **Transfer**: Transfer tokens between accounts with decimal checking
 - **Burn**: Burn tokens from an account
@@ -30,50 +29,113 @@ The base Token class now provides the following core functionality:
 
 These core features work with all token extensions.
 
-## Simplified Token Creation
+## Wallet-Adapter Integration (No Keypair Required)
 
-We've improved the token creation process with new streamlined methods:
-
-### Recommended Approach: Using TokenBuilder
+The SDK is designed to be fully compatible with wallet-adapter:
 
 ```typescript
-import { Connection, Keypair, clusterApiUrl } from "@solana/web3.js";
+import { Connection, clusterApiUrl } from "@solana/web3.js";
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { TokenBuilder } from "solana-token-extension-boost";
 
-// Connect to Solana network
-const connection = new Connection(clusterApiUrl("devnet"));
-const payer = Keypair.generate(); // Your payer keypair
+function YourComponent() {
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction } = useWallet();
 
-// Create a token with multiple extensions including metadata
-const tokenBuilder = new TokenBuilder(connection)
-  .setTokenInfo(
-    9, // decimals
-    payer.publicKey, // mint authority
-    null // freeze authority
-  )
-  // Add metadata
-  .addMetadata(
-    "My Token",
-    "TKN",
-    "https://example.com/metadata.json",
-    { "website": "https://example.com" }
-  )
-  // Add TransferFee extension
-  .addTransferFee(
-    100, // 1% fee (basis points)
-    BigInt(1000000000), // max fee 1 token
-    payer.publicKey, // config authority
-    payer.publicKey // withdraw authority
-  )
-  // Add other extensions
-  .addNonTransferable()
-  .addPermanentDelegate(payer.publicKey);
+  const createToken = async () => {
+    if (!publicKey) return;
 
-// Create the token with all extensions
-const { mint, transactionSignature, token } = 
-  await tokenBuilder.createTokenWithMetadataAndExtensions(payer);
+    // Create a token with multiple extensions including metadata
+    const tokenBuilder = new TokenBuilder(connection)
+      .setTokenInfo(
+        9, // decimals
+        publicKey, // mint authority
+        null // freeze authority
+      )
+      // Add metadata
+      .addTokenMetadata(
+        "My Token",
+        "TKN",
+        "https://example.com/metadata.json",
+        { "website": "https://example.com" }
+      )
+      // Add TransferFee extension
+      .addTransferFee(
+        100, // 1% fee (basis points)
+        BigInt(1000000000), // max fee 1 token
+        publicKey, // config authority
+        publicKey // withdraw authority
+      );
 
-console.log(`Token created: ${mint.toBase58()}`);
+    // Generate instructions instead of executing transaction directly
+    const { instructions, signers, mint } = 
+      await tokenBuilder.createTokenInstructions(publicKey);
+
+    // Create transaction from instructions
+    const transaction = tokenBuilder.buildTransaction(instructions, publicKey);
+    
+    // Sign with wallet
+    const signature = await sendTransaction(transaction, connection, {
+      signers: signers
+    });
+
+    console.log(`Token created: ${mint.toBase58()}`);
+    console.log(`Transaction signature: ${signature}`);
+  };
+
+  return (
+    <button onClick={createToken} disabled={!publicKey}>
+      Create Token
+    </button>
+  );
+}
+```
+
+## TransferFee With Instructions API Example
+
+```typescript
+import { Connection, clusterApiUrl } from "@solana/web3.js";
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { TransferFeeToken } from "solana-token-extension-boost";
+
+function TransferComponent({ mintAddress }) {
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction } = useWallet();
+
+  const transferTokens = async (destination, amount) => {
+    if (!publicKey || !mintAddress) return;
+    
+    // Create TransferFeeToken instance
+    const token = new TransferFeeToken(connection, mintAddress, {
+      feeBasisPoints: 100, // 1%
+      maxFee: BigInt(1000000000), // 1 token
+      transferFeeConfigAuthority: publicKey, 
+      withdrawWithheldAuthority: publicKey
+    });
+    
+    // Find source token account
+    const sourceAccount = await token.getAssociatedTokenAddress(publicKey);
+
+    // Create transfer instruction
+    const instruction = token.createTransferInstruction(
+      sourceAccount,
+      destination,
+      publicKey,
+      amount,
+      9 // decimals
+    );
+    
+    // Build and send transaction
+    const transaction = new Transaction().add(instruction);
+    const signature = await sendTransaction(transaction, connection);
+    
+    console.log(`Transfer complete: ${signature}`);
+  };
+
+  return (
+    // Your component UI
+  );
+}
 ```
 
 ## Examples
@@ -84,42 +146,60 @@ The SDK includes several examples to help you get started:
 - **Transfer Hook Examples** (`examples/transfer-hook/`): Create tokens with custom transfer hooks
 - **Multi-Extension Examples** (`examples/multi-extension-example/`): Create tokens with multiple extensions at once
 - **Metadata Examples** (`examples/metadata/`): Create tokens with metadata and other extensions
+- **Instructions API Examples** (`examples/instructions-api-example/`): Examples of using the instructions API with wallet adapter
 
 Run an example with:
 ```bash
 ts-node examples/metadata/combined-extensions.ts
 ```
 
-## New Features and Improvements
+## Key Features
 
-Recent improvements to the SDK include:
+Important features of the SDK include:
 
-- **Enhanced Base Token Class**: Added core token functionality:
+- **Instructions API**: All methods now return instructions rather than executing transactions directly, making them compatible with wallet adapters
+  - `createTokenInstructions()`: Generate instructions to create a token
+  - `createTransferInstruction()`: Generate instructions for transfers
+  - `createWithdrawFeesFromAccountsInstruction()`: Generate instructions to withdraw fees
+
+- **Core Token Support**: The base Token class provides essential functionality:
   - `transfer()`: Transfer tokens between accounts
   - `burnTokens()`: Burn tokens from an account
   - `createOrGetTokenAccount()`: Create or get existing token accounts
 
-- **Enhanced TokenBuilder**: The `TokenBuilder` class now features new optimized methods:
-  - `createTokenWithExtensions()`: For tokens with non-metadata extensions
-  - `createTokenWithMetadataAndExtensions()`: For tokens with metadata and other extensions
+## What's New in Current Version
 
-- **Deprecated Legacy Methods**: The `build()` method and various factory methods are now marked as deprecated in favor of the more efficient new methods.
+The current version brings significant API changes to fully support wallet-adapter integration:
 
-- **Improved Error Handling**: Better validation and error reporting for extension compatibility.
+1. **Removed All Keypair-Based Methods**: All methods that required direct access to private keys (Keypair objects) have been removed. This is a breaking change but improves security by preventing private key exposure.
 
-- **Comprehensive Documentation**: Updated guides and examples in the `docs/` directory.
+2. **Instructions-First API Design**: All token operations now follow the instructions pattern:
+   - Create instructions using methods like `createTokenInstructions()`
+   - Build transactions from instructions
+   - Sign and send transactions with your wallet adapter
 
-## Roadmap
+3. **Complete Wallet Adapter Support**: The SDK now works seamlessly with any wallet adapter implementation, letting users sign transactions without exposing private keys.
 
-Upcoming Token Extensions planned for integration into the SDK:
+4. **Simplified Integration**: The separation of instruction creation from transaction execution makes the SDK more flexible for different frontend frameworks and wallet solutions.
 
-- **Default Account State**: Set default state for newly created token accounts  
-- **Mint Close Authority**: Define authority to close a mint account  
-- **Token Groups & Group Pointer**: Group multiple tokens under a shared classification or identity  
-- **Member Pointer**: Link individual tokens to a token group via on-chain metadata  
-- **CPI Guard**: Protect token operations from cross-program invocation (CPI) attacks  
-- **Required Memo**: Require a memo to be included with each token transfer  
-- **Close Authority**: Define who can close a specific token account
+## Development Roadmap
+
+The SDK already supports the following Token Extensions:
+
+- ✅ **Transfer Fee**: Create tokens with automatic transfer fees
+- ✅ **Metadata Pointer**: Store and manage metadata for tokens
+- ✅ **Non-Transferable**: Create non-transferable tokens (soulbound tokens)
+- ✅ **Permanent Delegate**: Permanently delegate token management authority to another address
+- ✅ **Interest-Bearing**: Create tokens that accrue interest over time
+- ✅ **Transfer Hook**: Execute custom logic on token transfers through a separate program
+- ✅ **Confidential Transfer**: Execute confidential token transfers that hide amounts
+- ✅ **Default Account State**: Set default state for newly created token accounts
+- ✅ **Mint Close Authority**: Define authority to close a mint account
+- ✅ **CPI Guard**: Protect token operations from cross-program invocation (CPI) attacks
+- ✅ **Token Groups & Group Pointer**: Group multiple tokens under a shared classification or identity
+- ✅ **Member Pointer**: Link individual tokens to a token group via on-chain metadata
+- ✅ **Required Memo**: Require a memo to be included with each token transfer
+- ✅ **Close Authority**: Define who can close a specific token account
 
 ## Installation
 
@@ -134,3 +214,4 @@ Refer to the `docs/` directory for detailed guides on using each feature:
 - [Token Extensions Guide](docs/token-extensions-guide.md): A comprehensive guide to token extensions
 - [Metadata Integration Guide](docs/metadata-integration-guide.md): How to create tokens with metadata
 - [Multi-Extension Guide](docs/multi-extension-guide.md): How to combine multiple extensions
+- [Wallet Adapter Integration](docs/wallet-adapter-integration.md): How to use the SDK with wallet adapter

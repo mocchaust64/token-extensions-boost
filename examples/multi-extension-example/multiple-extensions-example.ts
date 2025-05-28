@@ -2,6 +2,7 @@ import {
   Connection,
   Keypair,
   clusterApiUrl,
+  Transaction,
 } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
@@ -55,8 +56,30 @@ async function main() {
     // Extension 3: PermanentDelegate
     .addPermanentDelegate(rateAuthority);
 
-  // Create token with configured extensions
-  const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);
+  // Create token with configured extensions - SỬ DỤNG API MỚI
+  // Lấy instructions thay vì tạo token trực tiếp
+  const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+  
+  // Tạo và cấu hình transaction
+  const transaction = new Transaction().add(...instructions);
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
+  transaction.feePayer = payer.publicKey;
+  
+  // Ký và gửi transaction
+  transaction.sign(...signers, payer);
+  const transactionSignature = await connection.sendRawTransaction(
+    transaction.serialize(),
+    { skipPreflight: false }
+  );
+  
+  // Đợi xác nhận
+  await connection.confirmTransaction({
+    signature: transactionSignature,
+    blockhash,
+    lastValidBlockHeight
+  });
   
   console.log(`Token created successfully!`);
   console.log(`Mint address: ${mint.toString()}`);

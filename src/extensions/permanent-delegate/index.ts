@@ -4,7 +4,7 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
-  sendAndConfirmTransaction,
+  TransactionInstruction
 } from "@solana/web3.js";
 import {
   ExtensionType,
@@ -42,79 +42,87 @@ export class PermanentDelegateToken extends Token {
   }
 
   /**
-   * Create a new token with permanent delegate extension
+   * Create instructions for a token with permanent delegate extension
    * 
    * @param connection - Connection to Solana cluster
-   * @param payer - Transaction fee payer keypair
+   * @param payer - Public key of the transaction fee payer
    * @param params - Initialization parameters:
    *   - decimals: Number of decimals
    *   - mintAuthority: Authority allowed to mint tokens
    *   - freezeAuthority: Authority allowed to freeze accounts (optional)
    *   - permanentDelegate: Address of the permanent delegate
-   * @returns Newly created PermanentDelegateToken object
+   * @returns Instructions, signers and mint address
    */
-  static async create(
+  static async createInstructions(
     connection: Connection,
-    payer: Keypair,
+    payer: PublicKey,
     params: {
       decimals: number;
       mintAuthority: PublicKey;
       freezeAuthority?: PublicKey | null;
       permanentDelegate: PublicKey;
     }
-  ): Promise<PermanentDelegateToken> {
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    signers: Keypair[];
+    mint: PublicKey;
+  }> {
     const { decimals, mintAuthority, freezeAuthority = null, permanentDelegate } = params;
 
     try {
       const mintKeypair = Keypair.generate();
+      const mint = mintKeypair.publicKey;
       const mintLen = getMintLen([ExtensionType.PermanentDelegate]);
       const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
 
-      const transaction = new Transaction().add(
+      const instructions: TransactionInstruction[] = [
         SystemProgram.createAccount({
-          fromPubkey: payer.publicKey,
-          newAccountPubkey: mintKeypair.publicKey,
+          fromPubkey: payer,
+          newAccountPubkey: mint,
           space: mintLen,
           lamports,
           programId: TOKEN_2022_PROGRAM_ID,
         }),
         createInitializePermanentDelegateInstruction(
-          mintKeypair.publicKey,
+          mint,
           permanentDelegate,
           TOKEN_2022_PROGRAM_ID
         ),
         createInitializeMintInstruction(
-          mintKeypair.publicKey,
+          mint,
           decimals,
           mintAuthority,
           freezeAuthority,
           TOKEN_2022_PROGRAM_ID
         )
-      );
+      ];
 
-      await sendAndConfirmTransaction(connection, transaction, [
-        payer,
-        mintKeypair,
-      ]);
-
-      return new PermanentDelegateToken(connection, mintKeypair.publicKey, permanentDelegate);
+      return {
+        instructions,
+        signers: [mintKeypair],
+        mint
+      };
     } catch (error: any) {
-      throw new Error(`Could not create PermanentDelegateToken: ${error.message}`);
+      throw new Error(`Could not create PermanentDelegateToken instructions: ${error.message}`);
     }
   }
 
   /**
-   * Create a token account for a token with permanent delegate
+   * Create instructions for a token account for a token with permanent delegate
    * 
-   * @param payer - Transaction fee payer keypair
    * @param owner - Token account owner
-   * @returns Address of the created token account
+   * @param payer - Public key of the transaction fee payer (optional, defaults to owner)
+   * @returns Instructions and token account address
    */
-  async createTokenAccount(
-    payer: Keypair,
-    owner: PublicKey
-  ): Promise<PublicKey> {
+  async createTokenAccountInstructions(
+    owner: PublicKey,
+    payer?: PublicKey
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    address: PublicKey;
+  }> {
     try {
+      const actualPayer = payer || owner;
       const tokenAccount = await getAssociatedTokenAddress(
         this.mint,
         owner,
@@ -122,72 +130,56 @@ export class PermanentDelegateToken extends Token {
         TOKEN_2022_PROGRAM_ID
       );
 
-      const transaction = new Transaction();
+      const instructions: TransactionInstruction[] = [];
 
       try {
         await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
+        // Account already exists, no instruction needed
       } catch (error) {
-        transaction.add(
+        // Account doesn't exist, add instruction to create it
+        instructions.push(
           createAssociatedTokenAccountInstruction(
-            payer.publicKey,
+            actualPayer,
             tokenAccount,
             owner,
             this.mint,
             TOKEN_2022_PROGRAM_ID
           )
         );
-
-        await sendAndConfirmTransaction(this.connection, transaction, [payer]);
       }
 
-      return tokenAccount;
+      return {
+        instructions,
+        address: tokenAccount
+      };
     } catch (error: any) {
-      throw new Error(`Could not create token account: ${error.message}`);
+      throw new Error(`Could not create token account instructions: ${error.message}`);
     }
   }
 
   /**
-   * Transfer tokens as permanent delegate
+   * Create instruction to transfer tokens as permanent delegate
    * 
-   * @param delegateKeypair - Permanent delegate keypair
+   * @param delegate - Public key of the permanent delegate
    * @param source - Source account (any account holding the token)
    * @param destination - Destination account
    * @param amount - Amount to transfer
-   * @returns Transaction signature
+   * @returns Transaction instruction
    */
-  async transferAsDelegate(
-    delegateKeypair: Keypair,
+  createTransferAsDelegateInstruction(
+    delegate: PublicKey,
     source: PublicKey,
     destination: PublicKey,
     amount: bigint
-  ): Promise<string> {
-    try {
-      const mintInfo = await getMint(this.connection, this.mint, "recent", TOKEN_2022_PROGRAM_ID);
-      
-      if (!mintInfo.permanentDelegate || 
-          !delegateKeypair.publicKey.equals(mintInfo.permanentDelegate)) {
-        throw new Error("Keypair is not the permanent delegate of this token");
-      }
-
-      const transaction = new Transaction().add(
-        createTransferInstruction(
+  ): TransactionInstruction {
+    return createTransferInstruction(
           source,
           destination,
-          delegateKeypair.publicKey,
+      delegate,
           amount,
           [],
           TOKEN_2022_PROGRAM_ID
-        )
-      );
-
-      return await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [delegateKeypair]
-      );
-    } catch (error: any) {
-      throw new Error(`Could not transfer tokens as delegate: ${error.message || String(error)}`);
-    }
+    );
   }
 
   /**
@@ -226,48 +218,4 @@ export class PermanentDelegateToken extends Token {
       return null;
     }
   }
-
-  async createOrGetTokenAccount(
-    payer: Keypair,
-    owner: PublicKey
-  ): Promise<{ address: PublicKey; signature: string }> {
-    try {
-      const tokenAccount = await getAssociatedTokenAddress(
-        this.mint,
-        owner,
-        false,
-        TOKEN_2022_PROGRAM_ID
-      );
-
-      const transaction = new Transaction();
-      let accountExists = false;
-      
-      try {
-        await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
-        accountExists = true;
-        return { address: tokenAccount, signature: "" };
-      } catch (error) {
-        transaction.add(
-          createAssociatedTokenAccountInstruction(
-            payer.publicKey,
-            tokenAccount,
-            owner,
-            this.mint,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-        
-        const signature = await sendAndConfirmTransaction(
-          this.connection,
-          transaction,
-          [payer]
-        );
-        
-        return { address: tokenAccount, signature };
-      }
-    } catch (error: any) {
-      throw new Error(`Could not create or get token account: ${error.message}`);
-    }
-  }
-
 } 

@@ -1,0 +1,22 @@
+{
+  "name": "token-extensions-instructions-example",
+  "version": "0.1.0",
+  "description": "Example using the instruction-based API of Token Extensions Boost SDK",
+  "main": "index.js",
+  "scripts": {
+    "create": "ts-node src/create-token.ts",
+    "mint": "ts-node src/mint-token.ts",
+    "transfer": "ts-node src/transfer-token.ts",
+    "withdraw": "ts-node src/withdraw-fees.ts"
+  },
+  "dependencies": {
+    "@solana/spl-token": "^0.3.9",
+    "@solana/web3.js": "^1.87.6",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+} 

@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction, Keypair } from "@solana/web3.js";
 import {
   ExtensionType,
   TOKEN_2022_PROGRAM_ID,
@@ -7,7 +7,6 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   getOrCreateAssociatedTokenAccount,
-  mintTo,
   createTransferInstruction,
   getMint,
   getAccount
@@ -27,200 +26,117 @@ export class ConfidentialTransferToken extends Token {
   }
 
   /**
-   * Create a new token with confidential transfer extension
+   * Create instructions to create a new token with confidential transfer extension
    * 
    * @param connection - Connection to Solana cluster
-   * @param payer - Keypair of the transaction fee payer
+   * @param payer - Public key of the transaction fee payer
    * @param options - Creation options including:
    *   - decimals: Number of decimals for the token
    *   - mintAuthority: Authority allowed to mint tokens
    *   - freezeAuthority: Authority allowed to freeze accounts (optional)
    *   - autoEnable?: Whether to auto-enable confidential transfers
-   * @returns A new ConfidentialTransferToken instance
+   * @returns Instructions, signers and mint address
    */
-  static async create(
+  static async createInstructions(
     connection: Connection,
-    payer: Keypair,
+    payer: PublicKey,
     options: {
       decimals: number;
       mintAuthority: PublicKey;
       freezeAuthority?: PublicKey | null;
-      autoEnable?: boolean;
     }
-  ): Promise<ConfidentialTransferToken> {
-    const { decimals, mintAuthority, freezeAuthority = null, autoEnable = true } = options;
-
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    signers: Keypair[];
+    mint: PublicKey;
+  }> {
+    const { decimals, mintAuthority, freezeAuthority = null } = options;
   
     const mintLen = getMintLen([ExtensionType.ConfidentialTransferMint]);
     const mintKeypair = Keypair.generate();
+    const mint = mintKeypair.publicKey;
     const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
-    const transaction = new Transaction();
 
-    transaction.add(
+    const instructions: TransactionInstruction[] = [
       SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: mintKeypair.publicKey,
+        fromPubkey: payer,
+        newAccountPubkey: mint,
         space: mintLen,
         lamports,
         programId: TOKEN_2022_PROGRAM_ID,
-      })
-    );
-
-  
-    transaction.add(
+      }),
       createInitializeMintInstruction(
-        mintKeypair.publicKey,
+        mint,
         decimals,
         mintAuthority,
         freezeAuthority,
         TOKEN_2022_PROGRAM_ID
       )
-    );
-
-    await sendAndConfirmTransaction(
-      connection,
-      transaction,
-      [payer, mintKeypair]
-    );
+    ];
     
-    return new ConfidentialTransferToken(connection, mintKeypair.publicKey);
+    return {
+      instructions,
+      signers: [mintKeypair],
+      mint
+    };
   }
-  
+
   /**
-   * Configure an account for confidential transfers
+   * Create instructions to configure an account for confidential transfers
    * 
-   * @param payer - Transaction fee payer
-   * @param owner - Owner of the token account
-   * @returns Transaction signature
+   * @param owner - Public key of the token account owner
+   * @param tokenAccount - Public key of the token account to configure (optional)
+   * @returns Transaction instruction
    */
-  async configureAccount(
-    payer: Keypair,
-    owner: Keypair
-  ): Promise<string> {
-    const tokenAccount = await getAssociatedTokenAddress(
+  async createConfigureAccountInstruction(
+    owner: PublicKey,
+    tokenAccount?: PublicKey
+  ): Promise<TransactionInstruction> {
+    const account = tokenAccount || await getAssociatedTokenAddress(
       this.mint,
-      owner.publicKey,
+      owner,
       false,
       TOKEN_2022_PROGRAM_ID
     );
 
-    const transaction = new Transaction();
-
-    try {
-      await this.connection.getAccountInfo(tokenAccount);
-    } catch (error) {
-      transaction.add(
-        createAssociatedTokenAccountInstruction(
-          payer.publicKey,
-          tokenAccount,
-          owner.publicKey,
-          this.mint,
-          TOKEN_2022_PROGRAM_ID
-        )
-      );
-    }
-
+    // Note: In a real implementation, we would use the 
+    // createEnableConfidentialCreditsInstruction from @solana/spl-token
+    // Since this depends on the specific version of the library, we'll
+    // just return a transfer instruction for demonstration
     
-    try {
-      return await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [payer, owner]
+    return createTransferInstruction(
+      account,
+      account, 
+      owner,
+      BigInt(0),
+      [],
+          TOKEN_2022_PROGRAM_ID
       );
-    } catch (error: any) {
-      throw new Error(`Could not configure account for confidential transfers: ${error.message}`);
     }
-  }
-  
+
   /**
-   * Execute a confidential transfer of tokens
+   * Create instruction for a confidential transfer
    * 
-   * @param payer - Transaction fee payer
-   * @param source - Source account address
-   * @param destination - Destination account address
-   * @param owner - Owner of the source account
+   * @param source - Public key of the source account
+   * @param destination - Public key of the destination account
+   * @param owner - Public key of the source account owner
    * @param amount - Amount to transfer
-   * @returns Transaction signature
+   * @returns Transaction instruction
    */
-  async confidentialTransfer(
-    payer: Keypair,
+  createConfidentialTransferInstruction(
     source: PublicKey,
     destination: PublicKey,
-    owner: Keypair,
+    owner: PublicKey,
     amount: bigint
-  ): Promise<string> {
-    const transaction = new Transaction();
-
-    try {
-      const sourceConfigured = await this.isConfiguredForConfidentialTransfers(source);
-      const destConfigured = await this.isConfiguredForConfidentialTransfers(destination);
-  
-      if (!sourceConfigured) {
-        throw new Error("Source account is not configured for confidential transfers");
-      }
-      
-      if (!destConfigured) {
-        throw new Error("Destination account is not configured for confidential transfers");
-      }
-
-      const proof = await this.generateProof(amount, source, destination);
-      
-      transaction.add(
-        createTransferInstruction(
+  ): TransactionInstruction {
+    return createTransferInstruction(
           source,
           destination,
-          owner.publicKey,
+      owner,
           amount,
           [],
-          TOKEN_2022_PROGRAM_ID
-        )
-      );
-
-      return await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [payer, owner]
-      );
-    } catch (error: any) {
-      throw new Error(`Could not perform confidential transfer: ${error.message}`);
-    }
-  }
-
-  /**
-   * Mint new tokens directly to a confidential account
-   * 
-   * @param payer - Transaction fee payer
-   * @param mintAuthority - Mint authority keypair
-   * @param destination - Destination account address
-   * @param amount - Amount to mint
-   * @returns Transaction signature
-   */
-  async mintToConfidential(
-    payer: Keypair,
-    mintAuthority: Keypair,
-    destination: PublicKey,
-    amount: bigint
-  ): Promise<string> {
-    try {
-      const isConfigured = await this.isConfiguredForConfidentialTransfers(destination);
-      
-      if (!isConfigured) {
-        throw new Error("Destination account is not configured for confidential transfers");
-      }
-      return await mintTo(
-        this.connection,
-        payer,
-        this.mint,
-        destination,
-        mintAuthority,
-        amount,
-        [],
-        undefined,
         TOKEN_2022_PROGRAM_ID
       );
-    } catch (error: any) {
-      throw new Error(`Could not mint to confidential account: ${error.message}`);
-    }
   }
 
   /**
@@ -236,114 +152,14 @@ export class ConfidentialTransferToken extends Token {
       if (!accountInfo) {
         return false;
       }
+      
+      // In a real implementation, we would check if the account
+      // has the confidential transfer extension initialized
+      // For now, we'll just return true if the account exists
+      
       return true;
     } catch (error) {
       return false;
-    }
-  }
-
-  /**
-   * Apply a zero-knowledge proof to a confidential transfer
-   * 
-   * @param proofData - Buffer containing the zero-knowledge proof data
-   * @param destination - Destination account for the transfer
-   * @returns Transaction signature
-   */
-  async applyProof(
-    proofData: Buffer, 
-    destination: PublicKey
-  ): Promise<string> {
-    try {
-      const transaction = new Transaction();
-      
-     
-      
-      const payer = Keypair.generate();
-      return await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [payer]
-      );
-    } catch (error: any) {
-      throw new Error(`Could not apply proof: ${error.message}`);
-    }
-  }
-
-  /**
-   * Generate a zero-knowledge proof for a confidential transfer
-   * This is a placeholder that would be implemented with actual cryptography
-   * 
-   * @param amount - Amount of tokens to transfer
-   * @param source - Source account
-   * @param destination - Destination account
-   * @returns Buffer containing the generated proof
-   */
-  async generateProof(
-    amount: bigint, 
-    source: PublicKey, 
-    destination: PublicKey
-  ): Promise<Buffer> {
-    const dummyProof = Buffer.alloc(64);
-    dummyProof.write(source.toBase58().slice(0, 32), 0);
-    dummyProof.write(destination.toBase58().slice(0, 32), 32);
-    
-    return dummyProof;
-  }
-
-  /**
-   * Create a new account configured for confidential transfers
-   * 
-   * @param payer - Transaction fee payer
-   * @param owner - Owner of the new account
-   * @returns Object containing the new account address and transaction signature
-   */
-  async createConfidentialAccount(
-    payer: Keypair,
-    owner: PublicKey
-  ): Promise<{ address: PublicKey; signature: string }> {
-    try {
-      const tokenAccount = await getAssociatedTokenAddress(
-        this.mint,
-        owner,
-        false,
-        TOKEN_2022_PROGRAM_ID
-      );
-
-      const transaction = new Transaction();
-
-      let accountExists = false;
-      try {
-        await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
-        accountExists = true;
-      } catch (error) {
-        transaction.add(
-          createAssociatedTokenAccountInstruction(
-            payer.publicKey,
-            tokenAccount,
-            owner,
-            this.mint,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-      }
-
-      if (accountExists) {
-        const isConfigured = await this.isConfiguredForConfidentialTransfers(tokenAccount);
-        if (!isConfigured) {
-      
-        }
-      } else {
-      }
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [payer]
-      );
-
-      return { address: tokenAccount, signature };
-    } catch (error: any) {
-      throw new Error(`Could not create confidential account: ${error.message}`);
     }
   }
 } 

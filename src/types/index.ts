@@ -13,8 +13,8 @@ export interface ConfidentialConfig extends TokenExtensionConfig {
 export interface TransferFeeConfig {
   feeBasisPoints: number;
   maxFee: bigint;
-  transferFeeConfigAuthority: Keypair | PublicKey | null;
-  withdrawWithheldAuthority: Keypair | PublicKey | null;
+  transferFeeConfigAuthority: Keypair | PublicKey;
+  withdrawWithheldAuthority: Keypair | PublicKey;
 }
 
 export interface TransferHookConfig extends TokenExtensionConfig {

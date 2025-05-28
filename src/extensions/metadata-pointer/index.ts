@@ -6,6 +6,7 @@ import {
   SystemProgram,
   sendAndConfirmTransaction,
   TransactionSignature,
+  TransactionInstruction,
 } from "@solana/web3.js";
 import {
   ExtensionType,
@@ -70,15 +71,27 @@ export class MetadataPointerToken extends Token {
     this.metadata = metadata;
   }
 
-  static async create(
+  /**
+   * Create instructions to make a new MetadataPointerToken
+   * 
+   * @param connection - Solana connection
+   * @param payer - Public key of the payer
+   * @param params - Parameters for token creation
+   * @returns Instructions, signers, and mint address
+   */
+  static async createInstructions(
     connection: Connection,
-    payer: Keypair,
+    payer: PublicKey,
     params: {
       decimals: number;
       mintAuthority: PublicKey;
       metadata: MetadataConfig;
     }
-  ): Promise<MetadataPointerToken> {
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    signers: Keypair[];
+    mint: PublicKey;
+  }> {
     const { decimals, mintAuthority, metadata } = params;
     
     if (!metadata.name || metadata.name.length > 32) {
@@ -111,9 +124,9 @@ export class MetadataPointerToken extends Token {
       mintLen + metadataLen
     );
 
-    const transaction = new Transaction().add(
+    const instructions: TransactionInstruction[] = [
       SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
+        fromPubkey: payer,
         newAccountPubkey: mintKeypair.publicKey,
         space: mintLen,
         lamports,
@@ -121,7 +134,7 @@ export class MetadataPointerToken extends Token {
       }),
       createInitializeMetadataPointerInstruction(
         mintKeypair.publicKey,
-        payer.publicKey,
+        payer,
         mintKeypair.publicKey,
         TOKEN_2022_PROGRAM_ID
       ),
@@ -135,14 +148,14 @@ export class MetadataPointerToken extends Token {
       createInitializeInstruction({
         programId: TOKEN_2022_PROGRAM_ID,
         metadata: mintKeypair.publicKey,
-        updateAuthority: payer.publicKey,
+        updateAuthority: payer,
         mint: mintKeypair.publicKey,
-        mintAuthority: payer.publicKey,
+        mintAuthority: mintAuthority,
         name: metadata.name,
         symbol: metadata.symbol,
         uri: metadata.uri,
       })
-    );
+    ];
 
     if (metadata.additionalMetadata) {
       for (const [key, value] of Object.entries(metadata.additionalMetadata)) {
@@ -150,11 +163,11 @@ export class MetadataPointerToken extends Token {
           continue;
         }
         
-        transaction.add(
+        instructions.push(
           createUpdateFieldInstruction({
             programId: TOKEN_2022_PROGRAM_ID,
             metadata: mintKeypair.publicKey,
-            updateAuthority: payer.publicKey,
+            updateAuthority: payer,
             field: key,
             value: value,
           })
@@ -162,12 +175,32 @@ export class MetadataPointerToken extends Token {
       }
     }
 
-    await sendAndConfirmTransaction(connection, transaction, [
-      payer,
-      mintKeypair,
-    ]);
+    return {
+      instructions,
+      signers: [mintKeypair],
+      mint: mintKeypair.publicKey
+    };
+  }
 
-    return new MetadataPointerToken(connection, mintKeypair.publicKey, metadata);
+  static async create(
+    connection: Connection,
+    payer: Keypair,
+    params: {
+      decimals: number;
+      mintAuthority: PublicKey;
+      metadata: MetadataConfig;
+    }
+  ): Promise<MetadataPointerToken> {
+    const { instructions, signers, mint } = await this.createInstructions(
+      connection,
+      payer.publicKey,
+      params
+    );
+
+    const transaction = new Transaction().add(...instructions);
+    await sendAndConfirmTransaction(connection, transaction, [payer, ...signers]);
+
+    return new MetadataPointerToken(connection, mint, params.metadata);
   }
 
   static async fromMint(
@@ -245,53 +278,53 @@ export class MetadataPointerToken extends Token {
     return metadata;
   }
 
+  /**
+   * Create instruction to update a metadata field
+   * 
+   * @param authority - Update authority public key
+   * @param field - Field name to update
+   * @param value - New value for the field
+   * @returns Transaction instruction
+   */
+  createUpdateMetadataFieldInstruction(
+    authority: PublicKey,
+    field: string,
+    value: string
+  ): TransactionInstruction {
+    return createUpdateFieldInstruction({
+      programId: TOKEN_2022_PROGRAM_ID,
+      metadata: this.mint,
+      updateAuthority: authority,
+      field,
+      value,
+    });
+  }
+
   async updateMetadataField(
     authority: Keypair,
     field: string,
     value: string
   ): Promise<MetadataUpdateResult> {
-    if (!field || field.length === 0) {
-      throw new Error("Field name cannot be empty");
-    }
-    
-    if (value.length === 0) {
-      throw new Error("Field value cannot be empty");
-    }
-    
     try {
-      const additionalRent = await this.connection.getMinimumBalanceForRentExemption(
-        LENGTH_SIZE + field.length + value.length
+      const instruction = this.createUpdateMetadataFieldInstruction(
+        authority.publicKey,
+        field,
+        value
       );
       
-      const transaction = new Transaction();
-      
-      transaction.add(
-        SystemProgram.transfer({
-          fromPubkey: authority.publicKey,
-          toPubkey: this.mint,
-          lamports: additionalRent,
-        })
-      );
-      
-      transaction.add(
-        createUpdateFieldInstruction({
-          programId: TOKEN_2022_PROGRAM_ID,
-          metadata: this.mint,
-          updateAuthority: authority.publicKey,
-          field: field,
-          value: value,
-        })
-      );
+      const transaction = new Transaction().add(instruction);
 
-      const signature = await sendAndConfirmTransaction(this.connection, transaction, [
-        authority,
-      ]);
+      const signature = await sendAndConfirmTransaction(
+        this.connection,
+        transaction,
+        [authority]
+      );
       
-      const updatedMetadata = await this.getTokenMetadata();
+      const metadata = await this.getTokenMetadata();
       
       return {
         signature,
-        metadata: updatedMetadata
+        metadata,
       };
     } catch (error) {
       throw new Error(`Failed to update metadata field: ${error}`);

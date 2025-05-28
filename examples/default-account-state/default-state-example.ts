@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, clusterApiUrl,  Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { Connection, Keypair, clusterApiUrl,  Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { TokenBuilder } from '../../src';
 import { 
   AccountState, 
@@ -45,16 +45,40 @@ async function main() {
       // Đặt trạng thái mặc định là Frozen
       .addDefaultAccountState(AccountState.Frozen);
     
-    // Tạo token
+    // Tạo token sử dụng API mới
     console.log('Đang tạo token...');
-    const { mint, transactionSignature, token } = 
-      await tokenBuilder.createToken(payer);
     
+    // Lấy instructions thay vì tạo token trực tiếp
+    const { instructions, signers, mint } = 
+      await tokenBuilder.createTokenInstructions(payer.publicKey);
+    
+    // Tạo và ký transaction
+    const tokenTransaction = new Transaction().add(...instructions);
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    tokenTransaction.recentBlockhash = blockhash;
+    tokenTransaction.lastValidBlockHeight = lastValidBlockHeight;
+    tokenTransaction.feePayer = payer.publicKey;
+    
+    // Ký và gửi transaction
+    tokenTransaction.sign(...signers, payer);
+    const transactionSignature = await connection.sendRawTransaction(
+      tokenTransaction.serialize(),
+      { skipPreflight: false }
+    );
+    
+    // Đợi xác nhận
+    await connection.confirmTransaction({
+      signature: transactionSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
+
+    // Thêm console.log sau transaction thành công
     console.log(`Token tạo thành công!`);
     console.log(`Địa chỉ mint: ${mint.toBase58()}`);
     console.log(`Chữ ký giao dịch: ${transactionSignature}`);
     console.log(`Link Solana Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
-
+    
     // 2. Tạo tài khoản token
     console.log('\nTạo tài khoản token cho token với DefaultAccountState.Frozen...');
     const associatedTokenAddress = await getAssociatedTokenAddress(
@@ -161,10 +185,33 @@ async function main() {
       // Đặt trạng thái mặc định là Initialized
       .addDefaultAccountState(AccountState.Initialized);
     
-    // Tạo token thứ hai
+    // Tạo token thứ hai sử dụng API mới
     console.log('Đang tạo token thứ hai...');
-    const { mint: secondMint, token: secondToken } = 
-      await initializedTokenBuilder.createToken(payer);
+    
+    // Lấy instructions thay vì tạo token trực tiếp
+    const { instructions: secondInstructions, signers: secondSigners, mint: secondMint } = 
+      await initializedTokenBuilder.createTokenInstructions(payer.publicKey);
+    
+    // Tạo và ký transaction
+    const secondTokenTx = new Transaction().add(...secondInstructions);
+    const secondBlockhashInfo = await connection.getLatestBlockhash();
+    secondTokenTx.recentBlockhash = secondBlockhashInfo.blockhash;
+    secondTokenTx.lastValidBlockHeight = secondBlockhashInfo.lastValidBlockHeight;
+    secondTokenTx.feePayer = payer.publicKey;
+    
+    // Ký và gửi transaction
+    secondTokenTx.sign(...secondSigners, payer);
+    const secondTokenSignature = await connection.sendRawTransaction(
+      secondTokenTx.serialize(),
+      { skipPreflight: false }
+    );
+    
+    // Đợi xác nhận
+    await connection.confirmTransaction({
+      signature: secondTokenSignature,
+      blockhash: secondBlockhashInfo.blockhash,
+      lastValidBlockHeight: secondBlockhashInfo.lastValidBlockHeight
+    });
     
     console.log(`Token thứ hai tạo thành công! Mint address: ${secondMint.toBase58()}`);
 

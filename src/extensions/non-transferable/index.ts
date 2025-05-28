@@ -4,8 +4,7 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
-  sendAndConfirmTransaction,
-  Signer,
+  TransactionInstruction
 } from "@solana/web3.js";
 import {
   ExtensionType,
@@ -16,11 +15,8 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
-  TokenAccountNotFoundError,
   getAccount,
-  getMint,
-  AccountState,
-  transferChecked,
+  getMint
 } from "@solana/spl-token";
 import { Token } from "../../core/token";
 
@@ -39,159 +35,127 @@ export class NonTransferableToken extends Token {
   }
 
   /**
-   * Create a new NonTransferableToken
+   * Create instructions for a new NonTransferableToken
    * 
    * @param connection - Connection to Solana cluster
-   * @param payer - Transaction fee payer keypair
+   * @param payer - Public key of the transaction fee payer
    * @param params - Initialization parameters including:
    *   - decimals: Number of decimal places
    *   - mintAuthority: Authority allowed to mint tokens
    *   - freezeAuthority: Optional authority allowed to freeze accounts
-   * @returns Newly created NonTransferableToken object
+   * @returns Instructions, signers and mint address for the new token
    */
-  static async create(
+  static async createInstructions(
     connection: Connection,
-    payer: Keypair,
+    payer: PublicKey,
     params: {
       decimals: number;
       mintAuthority: PublicKey;
       freezeAuthority?: PublicKey | null;
     }
-  ): Promise<NonTransferableToken> {
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    signers: Keypair[];
+    mint: PublicKey;
+  }> {
     try {
       const mintKeypair = Keypair.generate();
+      const mint = mintKeypair.publicKey;
+      
       const mintLen = getMintLen([ExtensionType.NonTransferable]);
       const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
 
-      const transaction = new Transaction().add(
+      const instructions: TransactionInstruction[] = [
         SystemProgram.createAccount({
-          fromPubkey: payer.publicKey,
-          newAccountPubkey: mintKeypair.publicKey,
+          fromPubkey: payer,
+          newAccountPubkey: mint,
           space: mintLen,
           lamports,
           programId: TOKEN_2022_PROGRAM_ID,
         }),
         createInitializeNonTransferableMintInstruction(
-          mintKeypair.publicKey,
+          mint,
           TOKEN_2022_PROGRAM_ID
         ),
         createInitializeMintInstruction(
-          mintKeypair.publicKey,
+          mint,
           params.decimals,
           params.mintAuthority,
           params.freezeAuthority ?? null,
           TOKEN_2022_PROGRAM_ID
         )
-      );
+      ];
 
-      await sendAndConfirmTransaction(connection, transaction, [
-        payer,
-        mintKeypair,
-      ], { commitment: 'confirmed' });
-
-      return new NonTransferableToken(connection, mintKeypair.publicKey);
-    } catch (error: any) {
-      throw new Error(`Could not create NonTransferableToken: ${error.message}`);
-    }
-  }
-
-  /**
-   * Create an account and mint tokens to it
-   * 
-   * @param owner - Account owner
-   * @param payer - Transaction fee payer
-   * @param amount - Amount to mint
-   * @param mintAuthority - Authority allowed to mint tokens
-   * @returns Public key of the newly created account and transaction signature
-   */
-  async createAccountAndMintTo(
-    owner: PublicKey,
-    payer: Keypair,
-    amount: bigint,
-    mintAuthority: Signer
-  ): Promise<{ address: PublicKey; signature: string }> {
-    try {
-      // Create token account
-      const { address, signature: createSignature } = await this.createOrGetTokenAccount(payer, owner);
-
-      // Mint tokens
-      const transaction = new Transaction().add(
-        createMintToInstruction(
-          this.mint,
-          address,
-          mintAuthority.publicKey,
-          amount,
-          [],
-          TOKEN_2022_PROGRAM_ID
-        )
-      );
-
-      const mintSignature = await sendAndConfirmTransaction(
-        this.connection,
-        transaction,
-        [payer, mintAuthority],
-        { commitment: "confirmed" }
-      );
-
-      return { 
-        address, 
-        signature: createSignature || mintSignature 
+      return {
+        instructions,
+        signers: [mintKeypair],
+        mint
       };
     } catch (error: any) {
-      throw new Error(`Could not create account and mint tokens: ${error.message}`);
+      throw new Error(`Could not create NonTransferableToken instructions: ${error.message}`);
     }
   }
 
   /**
-   * Create or get an existing token account
+   * Create instructions to mint to an account
    * 
-   * @param payer - Transaction fee payer
-   * @param owner - Account owner
-   * @returns Token account address and transaction signature
+   * @param owner - Public key of the account owner
+   * @param amount - Amount to mint
+   * @param mintAuthority - Public key of the mint authority
+   * @returns Instructions and token account address
    */
-  async createOrGetTokenAccount(
-    payer: Keypair,
-    owner: PublicKey
-  ): Promise<{ address: PublicKey; signature: string }> {
-    const associatedTokenAddress = await getAssociatedTokenAddress(
+  async createMintToInstructions(
+    owner: PublicKey,
+    amount: bigint,
+    mintAuthority: PublicKey
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    address: PublicKey;
+  }> {
+    try {
+      const tokenAccount = await getAssociatedTokenAddress(
       this.mint,
       owner,
       false,
       TOKEN_2022_PROGRAM_ID
     );
 
-    try {
-      // Check if account already exists
-      await getAccount(
-        this.connection,
-        associatedTokenAddress,
-        "confirmed",
-        TOKEN_2022_PROGRAM_ID
-      );
-      return { address: associatedTokenAddress, signature: "" };
-    } catch (error: any) {
-      if (error instanceof TokenAccountNotFoundError) {
-        // Account doesn't exist, create it
-        const transaction = new Transaction().add(
+      const instructions: TransactionInstruction[] = [];
+      
+      // Check if account exists
+      try {
+        await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
+      } catch (error) {
+        // Account doesn't exist, add instruction to create it
+        instructions.push(
           createAssociatedTokenAccountInstruction(
-            payer.publicKey,
-            associatedTokenAddress,
+            owner, // payer - we assume owner is paying
+            tokenAccount,
             owner,
             this.mint,
             TOKEN_2022_PROGRAM_ID
           )
         );
+      }
 
-        const signature = await sendAndConfirmTransaction(
-          this.connection,
-          transaction,
-          [payer],
-          { commitment: "confirmed" }
+      // Add mint instruction
+      instructions.push(
+        createMintToInstruction(
+          this.mint,
+          tokenAccount,
+          mintAuthority,
+          amount,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        )
         );
 
-        return { address: associatedTokenAddress, signature };
-      }
-      throw error;
+      return {
+        instructions,
+        address: tokenAccount
+      };
+    } catch (error: any) {
+      throw new Error(`Could not create mint instructions: ${error.message}`);
     }
   }
 
@@ -203,19 +167,15 @@ export class NonTransferableToken extends Token {
   async isNonTransferable(): Promise<boolean> {
     try {
       const mintInfo = await getMint(this.connection, this.mint, "confirmed", TOKEN_2022_PROGRAM_ID);
-      
      
       if (!mintInfo.tlvData || mintInfo.tlvData.length === 0) {
         console.log("Không có dữ liệu TLV cho mint");
         return false;
       }
-      
   
       console.log(`Mint TLV data for ${this.mint.toBase58()}:`, mintInfo.tlvData);
       
-    
-      const NON_TRANSFERABLE_TYPE = 8; 
-      
+      const NON_TRANSFERABLE_TYPE = 9; 
       
       let offset = 0;
       while (offset < mintInfo.tlvData.length) {
@@ -240,56 +200,9 @@ export class NonTransferableToken extends Token {
   }
 
   /**
-   * Thử chuyển token để kiểm tra tính năng không thể chuyển nhượng
-   * Phương thức này sẽ luôn thất bại với lỗi phù hợp nếu token có extension NonTransferable
+   * Get mint information
    * 
-   * @param source - Địa chỉ tài khoản nguồn
-   * @param destination - Địa chỉ tài khoản đích
-   * @param owner - Chủ sở hữu tài khoản nguồn
-   * @param amount - Số lượng token cần chuyển
-   * @param decimals - Số chữ số thập phân của token
-   * @returns Promise resolving to boolean sẽ luôn từ chối với lỗi khi có extension NonTransferable
-   */
-  async attemptTransfer(
-    source: PublicKey,
-    destination: PublicKey,
-    owner: Signer,
-    amount: bigint,
-    decimals: number
-  ): Promise<never> {
-    try {
-      const isNonTransferable = await this.isNonTransferable();
-      
-      if (isNonTransferable) {
-        throw new Error("Cannot transfer NonTransferableToken: tokens are non-transferable by design");
-      }
-      
-
-      await transferChecked(
-        this.connection,
-        owner,
-        source,
-        this.mint,
-        destination,
-        owner.publicKey,
-        amount,
-        decimals,
-        [],
-        { commitment: "confirmed" },
-        TOKEN_2022_PROGRAM_ID
-      );
-      
-      // Không nên đến được đây
-      throw new Error("Transfer succeeded unexpectedly for a NonTransferableToken");
-    } catch (error: any) {
-      throw new Error(`Transfer failed as expected: ${error.message}`);
-    }
-  }
-
-  /**
-   * Lấy thông tin về mint của token
-   * 
-   * @returns Thông tin chi tiết về mint
+   * @returns Mint information
    */
   async getMintInfo(): Promise<any> {
     try {
@@ -300,9 +213,9 @@ export class NonTransferableToken extends Token {
   }
 
   /**
-   * Kiểm tra token có extension NonTransferable hay không và trả về thông tin
+   * Get non-transferable information
    * 
-   * @returns Thông tin chi tiết về extension NonTransferable
+   * @returns Object with isNonTransferable property
    */
   async getNonTransferableInfo(): Promise<{ isNonTransferable: boolean }> {
     const isNonTransferable = await this.isNonTransferable();
@@ -310,31 +223,14 @@ export class NonTransferableToken extends Token {
   }
 
   /**
-   * Kiểm tra xem một tài khoản token có thể thực hiện chuyển token hay không
-   * Đối với NonTransferableToken, phương thức này sẽ luôn trả về false
+   * Check if tokens can be transferred from a token account
+   * For non-transferable tokens, this will always return false
    * 
-   * @param tokenAccount - Địa chỉ tài khoản token cần kiểm tra
-   * @returns False nếu là NonTransferableToken, hoặc tài khoản không tồn tại
+   * @param tokenAccount - Token account to check
+   * @returns Boolean indicating if tokens can be transferred
    */
   async canTransferTokens(tokenAccount: PublicKey): Promise<boolean> {
-    try {
       const isNonTransferable = await this.isNonTransferable();
-      if (isNonTransferable) {
-        return false;
-      }
-      
-      // Kiểm tra tài khoản tồn tại
-      await getAccount(
-        this.connection,
-        tokenAccount,
-        "confirmed",
-        TOKEN_2022_PROGRAM_ID
-      );
-      
-      // Với NonTransferableToken, về nguyên tắc không thể chuyển
-      return false;
-    } catch (error: any) {
-      return false;
-    }
+    return !isNonTransferable;
   }
 } 

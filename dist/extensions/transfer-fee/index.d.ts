@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, Signer } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { Token } from "../../core/token";
 import { TransferFeeConfig } from "../../types";
 /**
@@ -11,26 +11,30 @@ export declare class TransferFeeToken extends Token {
     private config;
     constructor(connection: Connection, mint: PublicKey, config: TransferFeeConfig);
     /**
-     * Create a new TransferFeeToken
+     * Generate instructions to create a new TransferFeeToken
      *
      * @param connection - Connection to Solana cluster
-     * @param payer - Transaction fee payer keypair
+     * @param payer - Public key of the transaction fee payer
      * @param params - Initialization parameters including:
      *   - decimals: Number of decimal places
      *   - mintAuthority: Authority allowed to mint tokens
      *   - transferFeeConfig: Transfer fee configuration
-     * @returns Newly created TransferFeeToken object
+     * @returns Instructions, signers and mint address
      */
-    static create(connection: Connection, payer: Keypair, params: {
+    static createInstructions(connection: Connection, payer: PublicKey, params: {
         decimals: number;
         mintAuthority: PublicKey;
         transferFeeConfig: {
             feeBasisPoints: number;
             maxFee: bigint;
-            transferFeeConfigAuthority: Keypair;
-            withdrawWithheldAuthority: Keypair;
+            transferFeeConfigAuthority: PublicKey;
+            withdrawWithheldAuthority: PublicKey;
         };
-    }): Promise<TransferFeeToken>;
+    }): Promise<{
+        instructions: TransactionInstruction[];
+        signers: Keypair[];
+        mint: PublicKey;
+    }>;
     /**
      * Calculate transfer fee based on token amount and fee configuration
      *
@@ -39,18 +43,18 @@ export declare class TransferFeeToken extends Token {
      */
     calculateFee(amount: bigint): bigint;
     /**
-     * Execute token transfer with automatically calculated fee
+     * Create transfer instruction with automatically calculated fee
      *
      * @param source - Source account address
      * @param destination - Destination account address
      * @param owner - Source account owner
      * @param amount - Token amount to transfer
      * @param decimals - Token decimal places
-     * @returns Transaction signature
+     * @returns TransactionInstruction
      */
-    transfer(source: PublicKey, destination: PublicKey, owner: Signer, amount: bigint, decimals: number): Promise<string>;
+    createTransferInstruction(source: PublicKey, destination: PublicKey, owner: PublicKey, amount: bigint, decimals: number): TransactionInstruction;
     /**
-     * Execute token transfer with specified fee
+     * Create transfer instruction with specified fee
      *
      * @param source - Source account address
      * @param destination - Destination account address
@@ -58,54 +62,45 @@ export declare class TransferFeeToken extends Token {
      * @param amount - Token amount to transfer
      * @param decimals - Token decimal places
      * @param fee - Specified fee amount
-     * @returns Transaction signature
+     * @returns TransactionInstruction
      */
-    transferWithFee(source: PublicKey, destination: PublicKey, owner: Signer, amount: bigint, decimals: number, fee: number): Promise<string>;
+    createTransferWithFeeInstruction(source: PublicKey, destination: PublicKey, owner: PublicKey, amount: bigint, decimals: number, fee: number): TransactionInstruction;
     /**
-     * Harvest withheld tokens from accounts to the mint
+     * Create instruction to harvest withheld tokens from accounts to the mint
      *
      * @param accounts - List of accounts with withheld fees to harvest
-     * @param withdrawAuthority - Withdraw authority keypair (required if not set in constructor)
-     * @returns Transaction signature
+     * @returns Transaction instruction
      */
-    harvestWithheldTokensToMint(accounts: PublicKey[], withdrawAuthority?: Keypair): Promise<string>;
+    createHarvestWithheldTokensToMintInstruction(accounts: PublicKey[]): TransactionInstruction;
     /**
-     * Withdraw withheld tokens from accounts to a destination account
+     * Create instruction to withdraw withheld tokens from accounts to a destination account
      *
      * @param accounts - List of accounts with withheld fees to withdraw
      * @param destination - Destination account to receive fees
-     * @param withdrawAuthority - Withdraw authority keypair (required if not set in constructor)
-     * @returns Transaction signature
+     * @param authority - Withdraw authority public key
+     * @returns Transaction instruction
      */
-    withdrawFeesFromAccounts(accounts: PublicKey[], destination: PublicKey, withdrawAuthority?: Keypair): Promise<string>;
+    createWithdrawFeesFromAccountsInstruction(accounts: PublicKey[], destination: PublicKey, authority: PublicKey): TransactionInstruction;
     /**
-     * Withdraw withheld tokens from mint to a destination account
+     * Create instruction to withdraw withheld tokens from mint to a destination account
      *
      * @param destination - Destination account to receive fees
-     * @param withdrawAuthority - Withdraw authority keypair (required if not set in constructor)
-     * @returns Transaction signature
+     * @param authority - Withdraw authority public key
+     * @returns Transaction instruction
      */
-    withdrawFeesFromMint(destination: PublicKey, withdrawAuthority?: Keypair): Promise<string>;
+    createWithdrawFeesFromMintInstruction(destination: PublicKey, authority: PublicKey): TransactionInstruction;
     /**
-     * Get the withdraw authority signer
-     *
-     * @param providedAuthority - Optional withdraw authority to use
-     * @returns Withdraw authority keypair or public key
-     * @private
-     */
-    private getWithdrawAuthority;
-    /**
-     * Create token account and mint tokens to it
+     * Create instructions to create token account and mint tokens to it
      *
      * @param owner - Token account owner address
-     * @param payer - Transaction fee payer keypair
+     * @param payer - Transaction fee payer public key
      * @param amount - Token amount to mint
-     * @param mintAuthority - Mint authority keypair
-     * @returns Created token account address and transaction signature
+     * @param mintAuthority - Mint authority
+     * @returns Instructions and token account address
      */
-    createAccountAndMintTo(owner: PublicKey, payer: Keypair, amount: bigint, mintAuthority: Signer): Promise<{
+    createAccountAndMintToInstructions(owner: PublicKey, payer: PublicKey, amount: bigint, mintAuthority: PublicKey): Promise<{
+        instructions: TransactionInstruction[];
         address: PublicKey;
-        signature: string;
     }>;
     /**
      * Find all accounts with withheld fees
@@ -145,15 +140,4 @@ export declare class TransferFeeToken extends Token {
      * @returns true nếu là withdraw withheld authority, false nếu không phải
      */
     isWithdrawWithheldAuthority(address: PublicKey): Promise<boolean>;
-    /**
-     * Tạo token account nếu chưa tồn tại hoặc trả về account đã tồn tại
-     *
-     * @param payer - Người trả phí giao dịch
-     * @param owner - Chủ sở hữu tài khoản token
-     * @returns Đối tượng chứa địa chỉ tài khoản và chữ ký giao dịch
-     */
-    createOrGetTokenAccount(payer: Keypair, owner: PublicKey): Promise<{
-        address: PublicKey;
-        signature: string;
-    }>;
 }

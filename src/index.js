@@ -14,7 +14,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MemberPointerExtension = exports.TokenGroupExtension = exports.CpiGuardExtension = exports.InterestBearingExtension = exports.DefaultAccountStateExtension = exports.MintCloseAuthorityExtension = exports.TokenAccount = exports.ImmutableOwnerToken = exports.NonTransferableToken = exports.ConfidentialTransferToken = exports.TransferHookToken = exports.PermanentDelegateToken = exports.TokenMetadataToken = exports.MetadataPointerToken = exports.TransferFeeToken = exports.MetadataHelper = exports.getOptimalInitializationOrder = exports.TokenAccountBuilder = exports.TokenBuilder = exports.Token = void 0;
+exports.TokenAccount = exports.ImmutableOwnerToken = exports.NonTransferableToken = exports.ConfidentialTransferToken = exports.TransferHookToken = exports.PermanentDelegateToken = exports.TokenMetadataToken = exports.MetadataPointerToken = exports.TransferFeeToken = exports.MetadataHelper = exports.getOptimalInitializationOrder = exports.TokenAccountBuilder = exports.TokenBuilder = exports.Token = void 0;
 // Core exports
 var token_1 = require("./core/token");
 Object.defineProperty(exports, "Token", { enumerable: true, get: function () { return token_1.Token; } });
@@ -45,16 +45,5 @@ var index_1 = require("./extensions/immutable-owner/index");
 Object.defineProperty(exports, "ImmutableOwnerToken", { enumerable: true, get: function () { return index_1.ImmutableOwnerToken; } });
 var token_account_1 = require("./extensions/token-account");
 Object.defineProperty(exports, "TokenAccount", { enumerable: true, get: function () { return token_account_1.TokenAccount; } });
+// Export relevant types from the main package
 __exportStar(require("./types"), exports);
-var mint_close_authority_1 = require("./extensions/mint-close-authority");
-Object.defineProperty(exports, "MintCloseAuthorityExtension", { enumerable: true, get: function () { return mint_close_authority_1.MintCloseAuthorityExtension; } });
-var default_account_state_1 = require("./extensions/default-account-state");
-Object.defineProperty(exports, "DefaultAccountStateExtension", { enumerable: true, get: function () { return default_account_state_1.DefaultAccountStateExtension; } });
-var interest_bearing_1 = require("./extensions/interest-bearing");
-Object.defineProperty(exports, "InterestBearingExtension", { enumerable: true, get: function () { return interest_bearing_1.InterestBearingExtension; } });
-var cpi_guard_1 = require("./extensions/cpi-guard");
-Object.defineProperty(exports, "CpiGuardExtension", { enumerable: true, get: function () { return cpi_guard_1.CpiGuardExtension; } });
-var token_groups_1 = require("./extensions/token-groups");
-Object.defineProperty(exports, "TokenGroupExtension", { enumerable: true, get: function () { return token_groups_1.TokenGroupExtension; } });
-var member_pointer_1 = require("./extensions/member-pointer");
-Object.defineProperty(exports, "MemberPointerExtension", { enumerable: true, get: function () { return member_pointer_1.MemberPointerExtension; } });
