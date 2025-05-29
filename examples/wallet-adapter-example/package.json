@@ -1,0 +1,41 @@
+{
+  "name": "token-extensions-boost-example",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@solana/web3.js": "^1.74.0",
+    "@types/node": "^16.18.39",
+    "@types/react": "^18.2.15",
+    "@types/react-dom": "^18.2.7",
+    "buffer": "^6.0.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "solana-token-extension-boost": "^3.0.4",
+    "token-extensions-boost": "file:../..",
+    "typescript": "^4.9.5",
+    "vite-plugin-node-polyfills": "^0.17.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.3",
+    "http-server": "^14.1.1",
+    "vite": "^4.4.11"
+  },
+  "scripts": {
+    "start": "http-server -p 8080",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

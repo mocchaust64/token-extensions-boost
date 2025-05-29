@@ -1,6 +1,6 @@
 {
   "name": "solana-token-extension-boost",
-  "version": "3.0.1",
+  "version": "3.2.5",
   "description": "SDK for Solana Token Extensions with wallet adapter support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
