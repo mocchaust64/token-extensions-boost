@@ -110,19 +110,19 @@ export class PermanentDelegateToken extends Token {
   /**
    * Create instructions for a token account for a token with permanent delegate
    * 
+   * @param payer - Public key of the transaction fee payer
    * @param owner - Token account owner
-   * @param payer - Public key of the transaction fee payer (optional, defaults to owner)
-   * @returns Instructions and token account address
+   * @returns Instructions, token account address, and account existence status
    */
   async createTokenAccountInstructions(
-    owner: PublicKey,
-    payer?: PublicKey
+    payer: PublicKey,
+    owner: PublicKey
   ): Promise<{
     instructions: TransactionInstruction[];
     address: PublicKey;
+    accountExists: boolean;
   }> {
     try {
-      const actualPayer = payer || owner;
       const tokenAccount = await getAssociatedTokenAddress(
         this.mint,
         owner,
@@ -131,15 +131,17 @@ export class PermanentDelegateToken extends Token {
       );
 
       const instructions: TransactionInstruction[] = [];
+      let accountExists = false;
 
       try {
         await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
         // Account already exists, no instruction needed
+        accountExists = true;
       } catch (error) {
         // Account doesn't exist, add instruction to create it
         instructions.push(
           createAssociatedTokenAccountInstruction(
-            actualPayer,
+            payer,
             tokenAccount,
             owner,
             this.mint,
@@ -150,7 +152,8 @@ export class PermanentDelegateToken extends Token {
 
       return {
         instructions,
-        address: tokenAccount
+        address: tokenAccount,
+        accountExists
       };
     } catch (error: any) {
       throw new Error(`Could not create token account instructions: ${error.message}`);

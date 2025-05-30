@@ -4,14 +4,15 @@ import {
   PublicKey, 
   clusterApiUrl,
   Transaction,
+  sendAndConfirmTransaction
 } from '@solana/web3.js';
 import * as fs from "fs";
 import * as path from "path";
 import { TokenBuilder, Token } from "../../src";
 
 import { 
-  getOrCreateAssociatedTokenAccount, 
-  TOKEN_2022_PROGRAM_ID
+  TOKEN_2022_PROGRAM_ID,
+  createTransferCheckedInstruction
 } from "@solana/spl-token";
 
 // Hàm trợ giúp để đợi một khoảng thời gian
@@ -88,15 +89,28 @@ async function main() {
   console.log("Đợi để xác nhận transaction...");
   await sleep(3000);
   
-  // Tạo tài khoản token cho người dùng - sử dụng phương thức từ lớp Token
+  // Tạo tài khoản token cho người dùng
   console.log("Tạo tài khoản token cho người dùng...");
-  const { address: userTokenAddress, signature: userTokenSignature } = await token.createOrGetTokenAccount(
-    payer,
-    payer.publicKey
-  );
-  console.log(`Tài khoản token người dùng: ${userTokenAddress.toString()}`);
-  if (userTokenSignature) {
+  const { instructions: createAccountIx, address: userTokenAddress, accountExists } = 
+    await token.createTokenAccountInstructions(payer.publicKey, payer.publicKey);
+  
+  if (!accountExists) {
+    // Nếu tài khoản chưa tồn tại, tạo transaction để tạo mới
+    const createAccountTx = new Transaction().add(...createAccountIx);
+    createAccountTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    createAccountTx.feePayer = payer.publicKey;
+    
+    // Ký và gửi transaction
+    const userTokenSignature = await sendAndConfirmTransaction(
+      connection,
+      createAccountTx,
+      [payer]
+    );
+    
+    console.log(`Tài khoản token người dùng: ${userTokenAddress.toString()}`);
     console.log(`Giao dịch tạo tài khoản: https://explorer.solana.com/tx/${userTokenSignature}?cluster=devnet`);
+  } else {
+    console.log(`Tài khoản token người dùng đã tồn tại: ${userTokenAddress.toString()}`);
   }
   
   // Đợi một chút để đảm bảo transaction được xác nhận
@@ -110,31 +124,39 @@ async function main() {
   console.log(`Người nhận: ${recipient.publicKey.toString()}`);
   
   console.log("Tạo tài khoản token cho người nhận...");
-  // Sử dụng getOrCreateAssociatedTokenAccount vì cần recipient public key
-  const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
-    connection,
+  // Sử dụng phương thức getOrCreateTokenAccount từ SDK
+  const recipientTokenAccount = await token.getOrCreateTokenAccount(
     payer,
-    mint,
     recipient.publicKey,
-    false, 
-    "confirmed", 
-    { skipPreflight: true },
-    TOKEN_2022_PROGRAM_ID
+    false,
+    "confirmed",
+    { skipPreflight: true }
   );
   console.log(`Tài khoản token người nhận: ${recipientTokenAccount.address.toString()}`);
   
   // Đợi một chút để đảm bảo transaction được xác nhận
   await sleep(2000);
   
-  // Mint tokens - sử dụng phương thức mintTo từ token instance
+  // Mint tokens - sử dụng phương thức createMintToInstructions của SDK
   console.log(`\n=== Mint ${Number(mintAmount) / 1e9} tokens ===`);
   
   try {
-    // Sử dụng phương thức mintTo từ lớp Token
-    const mintSignature = await token.mintTo(
+    // Tạo instructions để mint
+    const { instructions: mintInstructions } = token.createMintToInstructions(
       userTokenAddress,
-      payer,
+      payer.publicKey,
       mintAmount
+    );
+    
+    // Tạo và gửi transaction
+    const mintTx = new Transaction().add(...mintInstructions);
+    mintTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    mintTx.feePayer = payer.publicKey;
+    
+    const mintSignature = await sendAndConfirmTransaction(
+      connection,
+      mintTx,
+      [payer]
     );
     
     console.log(`Đã mint ${Number(mintAmount) / 1e9} tokens vào tài khoản ${userTokenAddress.toString()}`);
@@ -149,18 +171,42 @@ async function main() {
     process.exit(1);
   }
   
-  // Chuyển tokens - sử dụng phương thức transfer từ token instance
+  // Chuyển tokens - sử dụng phương thức createTransferInstructions của SDK
   console.log(`\n=== Chuyển tokens ===`);
   const transferAmount = BigInt(500_000_000_000);  // 500 tokens
   
   try {
-    // Sử dụng phương thức transfer từ lớp Token
-    const transferSignature = await token.transfer(
-      userTokenAddress,
-      recipientTokenAccount.address,
-      payer,
-      transferAmount,
-      9 // decimals
+    // Tạo instructions để chuyển token
+    const transferInstructions = [
+      createTransferCheckedInstruction(
+        userTokenAddress,                   // source
+        mint,                               // mint
+        recipientTokenAccount.address,      // destination
+        payer.publicKey,                    // owner
+        transferAmount,                     // amount
+        9,                                  // decimals
+        [],                                 // multisigners
+        TOKEN_2022_PROGRAM_ID               // program ID
+      )
+    ];
+    
+    // Thêm memo nếu cần
+    const memoId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+    transferInstructions.push({
+      keys: [{ pubkey: payer.publicKey, isSigner: true, isWritable: true }],
+      programId: memoId,
+      data: Buffer.from("Chuyển token từ ví dụ token-extensions-boost", "utf-8")
+    });
+    
+    // Tạo và gửi transaction
+    const transferTx = new Transaction().add(...transferInstructions);
+    transferTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    transferTx.feePayer = payer.publicKey;
+    
+    const transferSignature = await sendAndConfirmTransaction(
+      connection,
+      transferTx,
+      [payer]
     );
     
     console.log(`Đã chuyển ${Number(transferAmount) / 1e9} tokens tới ${recipient.publicKey.toString()}`);
@@ -175,18 +221,31 @@ async function main() {
     
   } catch (error: any) {
     console.error(`Lỗi khi chuyển tokens: ${error.message}`);
+    console.error(`Chi tiết lỗi:`, error);
   }
   
-  // Burn tokens - sử dụng phương thức burnTokens từ token instance
+  // Burn tokens - sử dụng phương thức createBurnInstructions của SDK
   console.log(`\n=== Burn tokens ===`);
   const burnAmount = BigInt(200_000_000_000);  // 200 tokens
   
   try {
-    // Sử dụng phương thức burnTokens từ lớp Token
-    const burnSignature = await token.burnTokens(
+    // Tạo instructions để đốt token
+    const { instructions: burnInstructions } = token.createBurnInstructions(
       userTokenAddress,
-      payer,
-      burnAmount
+      payer.publicKey,
+      burnAmount,
+      9 // decimals
+    );
+    
+    // Tạo và gửi transaction
+    const burnTx = new Transaction().add(...burnInstructions);
+    burnTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    burnTx.feePayer = payer.publicKey;
+    
+    const burnSignature = await sendAndConfirmTransaction(
+      connection,
+      burnTx,
+      [payer]
     );
     
     console.log(`Đã burn ${Number(burnAmount) / 1e9} tokens từ ${userTokenAddress.toString()}`);
@@ -201,19 +260,44 @@ async function main() {
   try {
     const delegateTransferAmount = BigInt(50_000_000_000); // 50 tokens
     
-    // Lưu ý: Permanent delegate có thể chuyển tokens từ bất kỳ tài khoản nào mà không cần chữ ký của chủ sở hữu
-    const delegateTransferSignature = await token.transfer(
-      recipientTokenAccount.address, // Nguồn (tài khoản người nhận trước đó)
-      userTokenAddress, // Đích (chuyển lại cho người dùng)
-      payer, // Permanent delegate
-      delegateTransferAmount,
-      9 // decimals
+    // Tạo instructions để chuyển token bằng permanent delegate
+    const delegateTransferInstructions = [
+      createTransferCheckedInstruction(
+        recipientTokenAccount.address,      // source
+        mint,                               // mint
+        userTokenAddress,                   // destination
+        payer.publicKey,                    // owner (permanent delegate)
+        delegateTransferAmount,             // amount
+        9,                                  // decimals
+        [],                                 // multisigners
+        TOKEN_2022_PROGRAM_ID               // program ID
+      )
+    ];
+    
+    // Thêm memo nếu cần
+    const memoId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+    delegateTransferInstructions.push({
+      keys: [{ pubkey: payer.publicKey, isSigner: true, isWritable: true }],
+      programId: memoId,
+      data: Buffer.from("Chuyển bởi permanent delegate", "utf-8")
+    });
+    
+    // Tạo và gửi transaction
+    const delegateTx = new Transaction().add(...delegateTransferInstructions);
+    delegateTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    delegateTx.feePayer = payer.publicKey;
+    
+    const delegateTransferSignature = await sendAndConfirmTransaction(
+      connection,
+      delegateTx,
+      [payer]
     );
     
     console.log(`Permanent Delegate đã chuyển ${Number(delegateTransferAmount) / 1e9} tokens từ tài khoản của người nhận về cho người dùng!`);
     console.log(`Giao dịch delegate: https://explorer.solana.com/tx/${delegateTransferSignature}?cluster=devnet`);
   } catch (error: any) {
     console.error(`Lỗi khi sử dụng permanent delegate: ${error.message}`);
+    console.error(`Chi tiết lỗi:`, error);
   }
   
   console.log(`\n=== Thông tin token ===`);

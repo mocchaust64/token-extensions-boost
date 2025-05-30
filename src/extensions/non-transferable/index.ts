@@ -99,12 +99,42 @@ export class NonTransferableToken extends Token {
   /**
    * Create instructions to mint to an account
    * 
-   * @param owner - Public key of the account owner
-   * @param amount - Amount to mint
-   * @param mintAuthority - Public key of the mint authority
-   * @returns Instructions and token account address
+   * @param destination - Địa chỉ tài khoản nhận token
+   * @param authority - Authority được phép mint token
+   * @param amount - Số lượng token cần mint
+   * @returns Object chứa instructions
    */
-  async createMintToInstructions(
+  createMintToInstructions(
+    destination: PublicKey,
+    authority: PublicKey,
+    amount: bigint
+  ): { instructions: TransactionInstruction[] } {
+    const instructions: TransactionInstruction[] = [];
+    
+    // Thêm instruction mint token
+    instructions.push(
+      createMintToInstruction(
+        this.mint,
+        destination,
+        authority,
+        amount,
+        [],
+        TOKEN_2022_PROGRAM_ID
+      )
+    );
+    
+    return { instructions };
+  }
+
+  /**
+   * Create instructions to mint to an account (phiên bản mở rộng)
+   * 
+   * @param owner - Chủ sở hữu tài khoản token
+   * @param amount - Số lượng token cần mint
+   * @param mintAuthority - Authority được phép mint token
+   * @returns Instructions và địa chỉ tài khoản token
+   */
+  async createMintToInstructionsWithAddress(
     owner: PublicKey,
     amount: bigint,
     mintAuthority: PublicKey
@@ -113,23 +143,24 @@ export class NonTransferableToken extends Token {
     address: PublicKey;
   }> {
     try {
+      // Lấy địa chỉ token account
       const tokenAccount = await getAssociatedTokenAddress(
-      this.mint,
-      owner,
-      false,
-      TOKEN_2022_PROGRAM_ID
-    );
+        this.mint,
+        owner,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
 
       const instructions: TransactionInstruction[] = [];
       
-      // Check if account exists
+      // Kiểm tra tài khoản đã tồn tại chưa
       try {
         await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
       } catch (error) {
-        // Account doesn't exist, add instruction to create it
+        // Tài khoản chưa tồn tại, thêm instruction tạo mới
         instructions.push(
           createAssociatedTokenAccountInstruction(
-            owner, // payer - we assume owner is paying
+            owner, // payer
             tokenAccount,
             owner,
             this.mint,
@@ -138,7 +169,7 @@ export class NonTransferableToken extends Token {
         );
       }
 
-      // Add mint instruction
+      // Thêm instruction mint token
       instructions.push(
         createMintToInstruction(
           this.mint,
@@ -148,7 +179,7 @@ export class NonTransferableToken extends Token {
           [],
           TOKEN_2022_PROGRAM_ID
         )
-        );
+      );
 
       return {
         instructions,

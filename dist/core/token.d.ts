@@ -1,4 +1,5 @@
-import { Connection, PublicKey, Keypair, Signer, TransactionInstruction } from "@solana/web3.js";
+import { Connection, PublicKey, Signer, TransactionInstruction, Commitment } from "@solana/web3.js";
+import { Account } from "@solana/spl-token";
 export declare class Token {
     protected connection: Connection;
     protected mint: PublicKey;
@@ -7,131 +8,110 @@ export declare class Token {
     getConnection(): Connection;
     getProgramId(): PublicKey;
     /**
-     * Tạo instruction mint token vào tài khoản
+     * Lấy địa chỉ Associated Token Account cho một ví
+     *
+     * @param owner - Địa chỉ ví chủ sở hữu
+     * @param allowOwnerOffCurve - Cho phép owner là địa chỉ ngoài đường cong (mặc định: false)
+     * @returns Địa chỉ của Associated Token Account
+     */
+    getAssociatedAddress(owner: PublicKey, allowOwnerOffCurve?: boolean): Promise<PublicKey>;
+    /**
+     * Tạo instruction để khởi tạo Associated Token Account
+     *
+     * @param payer - Người trả phí giao dịch
+     * @param associatedAccount - Địa chỉ Associated Token Account
+     * @param owner - Địa chỉ ví chủ sở hữu
+     * @returns TransactionInstruction để tạo Associated Token Account
+     */
+    createAssociatedTokenAccountInstruction(payer: PublicKey, associatedAccount: PublicKey, owner: PublicKey): TransactionInstruction;
+    /**
+     * Tạo instructions để mint token vào tài khoản
      *
      * @param destination - Địa chỉ tài khoản nhận token
      * @param authority - Authority được phép mint token
      * @param amount - Số lượng token cần mint
-     * @returns TransactionInstruction
+     * @returns Object chứa instructions
      */
-    createMintToInstruction(destination: PublicKey, authority: PublicKey, amount: bigint): TransactionInstruction;
+    createMintToInstructions(destination: PublicKey, authority: PublicKey, amount: bigint): {
+        instructions: TransactionInstruction[];
+    };
     /**
-     * Mint token vào tài khoản
-     *
-     * @param destination - Địa chỉ tài khoản nhận token
-     * @param authority - Authority được phép mint token
-     * @param amount - Số lượng token cần mint
-     * @param multiSigners - Danh sách signers nếu sử dụng multisig (tùy chọn)
-     * @returns Chữ ký của transaction
-     */
-    mintTo(destination: PublicKey, authority: Signer, amount: bigint, multiSigners?: Signer[]): Promise<string>;
-    /**
-     * Tạo instruction mint token với kiểm tra decimals
+     * Tạo instructions để mint token có kiểm tra decimals
      *
      * @param destination - Địa chỉ tài khoản nhận token
      * @param authority - Authority được phép mint token
      * @param amount - Số lượng token cần mint
      * @param decimals - Số decimals của token
-     * @returns TransactionInstruction
+     * @returns Object chứa instructions
      */
-    createMintToCheckedInstruction(destination: PublicKey, authority: PublicKey, amount: bigint, decimals: number): TransactionInstruction;
+    createMintToCheckedInstructions(destination: PublicKey, authority: PublicKey, amount: bigint, decimals: number): {
+        instructions: TransactionInstruction[];
+    };
     /**
-     * Mint token vào tài khoản với kiểm tra decimals
-     *
-     * @param destination - Địa chỉ tài khoản nhận token
-     * @param authority - Authority được phép mint token
-     * @param amount - Số lượng token cần mint
-     * @param decimals - Số decimals của token
-     * @param multiSigners - Danh sách signers nếu sử dụng multisig (tùy chọn)
-     * @returns Chữ ký của transaction
-     */
-    mintToChecked(destination: PublicKey, authority: Signer, amount: bigint, decimals: number, multiSigners?: Signer[]): Promise<string>;
-    /**
-     * Tạo các instructions để tạo tài khoản token và mint token vào tài khoản đó
+     * Tạo instructions để tạo tài khoản token và mint token
      *
      * @param owner - Chủ sở hữu tài khoản token
-     * @param payer - Payer public key
+     * @param payer - Người trả phí giao dịch
      * @param amount - Số lượng token cần mint
      * @param mintAuthority - Authority được phép mint token
-     * @returns Thông tin về instructions và địa chỉ tài khoản token
+     * @returns Object chứa instructions và địa chỉ tài khoản token
      */
     createAccountAndMintToInstructions(owner: PublicKey, payer: PublicKey, amount: bigint, mintAuthority: PublicKey): Promise<{
         instructions: TransactionInstruction[];
         address: PublicKey;
     }>;
     /**
-     * Tạo tài khoản token và mint token vào tài khoản đó
+     * Tạo instructions để đốt token
      *
-     * @param owner - Chủ sở hữu tài khoản token
-     * @param payer - Người trả phí giao dịch
-     * @param amount - Số lượng token cần mint
-     * @param mintAuthority - Authority được phép mint token
-     * @returns Địa chỉ tài khoản token và chữ ký giao dịch
+     * @param account - Địa chỉ tài khoản chứa token cần đốt
+     * @param owner - Chủ sở hữu tài khoản
+     * @param amount - Số lượng token cần đốt
+     * @param decimals - Số decimals của token
+     * @returns Object chứa instructions
      */
-    createAccountAndMintTo(owner: PublicKey, payer: Keypair, amount: bigint, mintAuthority: Signer): Promise<{
-        address: PublicKey;
-        signature: string;
+    createBurnInstructions(account: PublicKey, owner: PublicKey, amount: bigint, decimals: number): {
+        instructions: TransactionInstruction[];
+    };
+    /**
+     * Tạo instructions để chuyển token
+     *
+     * @param source - Địa chỉ tài khoản nguồn
+     * @param destination - Địa chỉ wallet hoặc token account đích
+     * @param owner - Chủ sở hữu tài khoản nguồn và người trả phí
+     * @param amount - Số lượng token cần chuyển
+     * @param decimals - Số decimals của token
+     * @param options - Các tùy chọn bổ sung
+     * @returns Object chứa instructions và địa chỉ tài khoản đích
+     */
+    createTransferInstructions(source: PublicKey, destination: PublicKey, owner: PublicKey, amount: bigint, decimals: number, options?: {
+        memo?: string;
+        createDestinationIfNeeded?: boolean;
+        feePayer?: PublicKey;
+    }): Promise<{
+        instructions: TransactionInstruction[];
+        destinationAddress: PublicKey;
     }>;
     /**
-     * Tạo instruction đốt (burn) một số lượng token từ tài khoản
-     *
-     * @param account - Địa chỉ tài khoản chứa token cần đốt
-     * @param owner - Chủ sở hữu của tài khoản
-     * @param amount - Số lượng token cần đốt
-     * @param decimals - Số decimals của token
-     * @returns TransactionInstruction để đốt token
-     */
-    createBurnInstruction(account: PublicKey, owner: PublicKey, amount: bigint, decimals: number): TransactionInstruction;
-    /**
-     * Đốt (burn) một số lượng token từ tài khoản
-     *
-     * @param account - Địa chỉ tài khoản chứa token cần đốt
-     * @param owner - Chủ sở hữu của tài khoản
-     * @param amount - Số lượng token cần đốt
-     * @returns Chữ ký của transaction
-     */
-    burnTokens(account: PublicKey, owner: Signer, amount: bigint): Promise<string>;
-    /**
-     * Đốt (burn) một số lượng token từ tài khoản với kiểm tra decimals
-     *
-     * @param account - Địa chỉ tài khoản chứa token cần đốt
-     * @param owner - Chủ sở hữu của tài khoản
-     * @param amount - Số lượng token cần đốt
-     * @param decimals - Số decimals của token
-     * @returns Chữ ký của transaction
-     */
-    burnTokensChecked(account: PublicKey, owner: Signer, amount: bigint, decimals: number): Promise<string>;
-    /**
-     * Tạo instruction chuyển token với kiểm tra decimals
-     *
-     * @param source - Địa chỉ tài khoản nguồn
-     * @param destination - Địa chỉ tài khoản đích
-     * @param owner - Chủ sở hữu tài khoản nguồn
-     * @param amount - Số lượng token cần chuyển
-     * @param decimals - Số decimals của token
-     * @returns TransactionInstruction
-     */
-    createTransferInstruction(source: PublicKey, destination: PublicKey, owner: PublicKey, amount: bigint, decimals: number): TransactionInstruction;
-    /**
-     * Chuyển token với kiểm tra decimals
-     *
-     * @param source - Địa chỉ tài khoản nguồn
-     * @param destination - Địa chỉ tài khoản đích
-     * @param owner - Chủ sở hữu tài khoản nguồn
-     * @param amount - Số lượng token cần chuyển
-     * @param decimals - Số decimals của token
-     * @returns Chữ ký của transaction
-     */
-    transfer(source: PublicKey, destination: PublicKey, owner: Signer, amount: bigint, decimals: number): Promise<string>;
-    /**
-     * Tạo hoặc lấy tài khoản token hiện có
+     * Tạo hoặc lấy tài khoản token
      *
      * @param payer - Người trả phí giao dịch
      * @param owner - Chủ sở hữu tài khoản token
-     * @returns Địa chỉ tài khoản token và chữ ký giao dịch
+     * @returns Object chứa instructions và địa chỉ tài khoản token
      */
-    createOrGetTokenAccount(payer: Keypair, owner: PublicKey): Promise<{
+    createTokenAccountInstructions(payer: PublicKey, owner: PublicKey): Promise<{
+        instructions: TransactionInstruction[];
         address: PublicKey;
-        signature: string;
+        accountExists: boolean;
     }>;
+    /**
+     * Tạo hoặc lấy tài khoản token liên kết cho một địa chỉ ví
+     *
+     * @param payer - Người trả phí giao dịch (dạng Keypair)
+     * @param owner - Chủ sở hữu tài khoản token
+     * @param allowOwnerOffCurve - Cho phép chủ sở hữu nằm ngoài đường cong (mặc định: false)
+     * @param commitment - Mức cam kết xác nhận giao dịch (mặc định: "confirmed")
+     * @param options - Các tùy chọn giao dịch
+     * @returns Thông tin tài khoản token đã tạo hoặc hiện có
+     */
+    getOrCreateTokenAccount(payer: Signer, owner: PublicKey, allowOwnerOffCurve?: boolean, commitment?: Commitment, options?: any): Promise<Account>;
 }
