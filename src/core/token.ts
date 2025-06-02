@@ -407,4 +407,23 @@ export class Token {
       this.getProgramId()
     );
   }
+
+  /**
+   * Lấy thông tin về tài khoản token
+   * 
+   * @param tokenAccount - Địa chỉ tài khoản token cần lấy thông tin
+   * @param commitment - Mức độ commit khi lấy dữ liệu (mặc định: confirmed)
+   * @returns Thông tin về tài khoản token
+   */
+  async getAccount(
+    tokenAccount: PublicKey,
+    commitment: Commitment = 'confirmed'
+  ): Promise<Account> {
+    return getAccount(
+      this.connection,
+      tokenAccount,
+      commitment,
+      this.getProgramId()
+    );
+  }
 } 

@@ -1,19 +1,13 @@
 import { 
   Connection, 
   Keypair, 
-  PublicKey, 
   clusterApiUrl, 
   Transaction, 
-  sendAndConfirmTransaction,
-  SystemProgram
 } from '@solana/web3.js';
-import { TokenBuilder } from '../../src';
+import { TokenBuilder, MintCloseAuthorityExtension } from '../../src';
 import { 
   TOKEN_2022_PROGRAM_ID, 
-  createCloseAccountInstruction,
-  getAccount,
   getMint,
-  getMintLen
 } from '@solana/spl-token';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -37,6 +31,7 @@ async function main() {
     // Tạo token với MintCloseAuthority
     console.log('\nTạo token với MintCloseAuthority...');
     
+    // Sử dụng TokenBuilder từ SDK để tạo token với MintCloseAuthority
     const tokenBuilder = new TokenBuilder(connection)
       .setTokenInfo(
         9, // decimals
@@ -114,6 +109,74 @@ async function main() {
     console.log('1. Tổng cung (supply) của token phải là 0');
     console.log('2. Bạn là MintCloseAuthority');
     console.log('3. Token không có tài khoản nào đang nắm giữ');
+    
+    // Thêm phần đóng mint account
+    console.log('\n----- Thực hiện đóng mint account -----');
+    
+    // Kiểm tra lại thông tin mint
+    const mintInfoBeforeClose = await getMint(
+      connection, 
+      mint,
+      'confirmed',
+      TOKEN_2022_PROGRAM_ID
+    );
+    
+    // Kiểm tra xem có thể đóng mint không
+    if (mintInfoBeforeClose.supply > 0) {
+      console.log('Không thể đóng mint: Token supply không phải là 0');
+    } else {
+      console.log('Token supply là 0, có thể đóng mint account');
+      
+      try {
+        // Sử dụng MintCloseAuthorityExtension.createCloseAccountInstruction từ SDK để đóng mint
+        const closeInstruction = MintCloseAuthorityExtension.createCloseAccountInstruction(
+          mint,                // Account để đóng (mint)
+          payer.publicKey,     // Destination cho lamports
+          payer.publicKey,     // Authority có thể đóng account
+          []                   // Multisig signers (mặc định là mảng rỗng)
+        );
+        
+        // Tạo và ký transaction
+        const closeTransaction = new Transaction().add(closeInstruction);
+        const { blockhash: closeBh, lastValidBlockHeight: closeHeight } = await connection.getLatestBlockhash();
+        closeTransaction.recentBlockhash = closeBh;
+        closeTransaction.lastValidBlockHeight = closeHeight;
+        closeTransaction.feePayer = payer.publicKey;
+        
+        // Ký và gửi transaction
+        closeTransaction.sign(payer);
+        const closeSignature = await connection.sendRawTransaction(
+          closeTransaction.serialize(),
+          { skipPreflight: false }
+        );
+        
+        // Đợi xác nhận
+        await connection.confirmTransaction({
+          signature: closeSignature,
+          blockhash: closeBh,
+          lastValidBlockHeight: closeHeight
+        });
+        
+        console.log('\nĐã đóng mint account thành công!');
+        console.log(`Chữ ký giao dịch đóng: ${closeSignature}`);
+        console.log(`Link Solana Explorer: https://explorer.solana.com/tx/${closeSignature}?cluster=devnet`);
+        
+        // Thử kiểm tra xem mint account có còn tồn tại không
+        try {
+          await getMint(
+            connection, 
+            mint,
+            'confirmed',
+            TOKEN_2022_PROGRAM_ID
+          );
+          console.log('Mint account vẫn còn tồn tại - có thể có vấn đề!');
+        } catch (e) {
+          console.log('Đã xác nhận mint account không còn tồn tại - đóng thành công!');
+        }
+      } catch (error) {
+        console.error('Lỗi khi đóng mint account:', error);
+      }
+    }
     
     console.log('\nVí dụ MintCloseAuthority đã hoàn tất!');
     

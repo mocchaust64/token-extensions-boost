@@ -99,10 +99,6 @@ export class ConfidentialTransferToken extends Token {
       TOKEN_2022_PROGRAM_ID
     );
 
-    // Note: In a real implementation, we would use the 
-    // createEnableConfidentialCreditsInstruction from @solana/spl-token
-    // Since this depends on the specific version of the library, we'll
-    // just return a transfer instruction for demonstration
     
     return createTransferInstruction(
       account,

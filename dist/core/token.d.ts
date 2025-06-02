@@ -114,4 +114,12 @@ export declare class Token {
      * @returns Thông tin tài khoản token đã tạo hoặc hiện có
      */
     getOrCreateTokenAccount(payer: Signer, owner: PublicKey, allowOwnerOffCurve?: boolean, commitment?: Commitment, options?: any): Promise<Account>;
+    /**
+     * Lấy thông tin về tài khoản token
+     *
+     * @param tokenAccount - Địa chỉ tài khoản token cần lấy thông tin
+     * @param commitment - Mức độ commit khi lấy dữ liệu (mặc định: confirmed)
+     * @returns Thông tin về tài khoản token
+     */
+    getAccount(tokenAccount: PublicKey, commitment?: Commitment): Promise<Account>;
 }

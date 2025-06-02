@@ -21,8 +21,7 @@ export function createInitializeGroupPointerInstruction(
   groupMint: PublicKey,
   programId = TOKEN_2022_PROGRAM_ID
 ): any {
-  // Trong thực tế, đây là nơi bạn sẽ triển khai logic để tạo instruction
-  // Vì đây là mock cho demo, chúng ta sẽ không thực hiện đầy đủ
+
   return {
     programId,
     keys: [

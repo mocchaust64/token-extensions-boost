@@ -219,5 +219,15 @@ class Token {
     async getOrCreateTokenAccount(payer, owner, allowOwnerOffCurve = false, commitment = "confirmed", options) {
         return (0, spl_token_1.getOrCreateAssociatedTokenAccount)(this.connection, payer, this.mint, owner, allowOwnerOffCurve, commitment, options, this.getProgramId());
     }
+    /**
+     * Lấy thông tin về tài khoản token
+     *
+     * @param tokenAccount - Địa chỉ tài khoản token cần lấy thông tin
+     * @param commitment - Mức độ commit khi lấy dữ liệu (mặc định: confirmed)
+     * @returns Thông tin về tài khoản token
+     */
+    async getAccount(tokenAccount, commitment = 'confirmed') {
+        return (0, spl_token_1.getAccount)(this.connection, tokenAccount, commitment, this.getProgramId());
+    }
 }
 exports.Token = Token;

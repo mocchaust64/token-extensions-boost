@@ -14,7 +14,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MemberPointerExtension = exports.TokenGroupExtension = exports.CpiGuardExtension = exports.InterestBearingExtension = exports.DefaultAccountStateExtension = exports.MintCloseAuthorityExtension = exports.TokenAccount = exports.ImmutableOwnerToken = exports.NonTransferableToken = exports.ConfidentialTransferToken = exports.TransferHookToken = exports.PermanentDelegateToken = exports.TokenMetadataToken = exports.MetadataPointerToken = exports.TransferFeeToken = exports.MetadataHelper = exports.getOptimalInitializationOrder = exports.TokenAccountBuilder = exports.TokenBuilder = exports.Token = void 0;
+exports.TokenFreezeExtension = exports.MemberPointerExtension = exports.TokenGroupExtension = exports.CpiGuardExtension = exports.InterestBearingExtension = exports.DefaultAccountStateExtension = exports.MintCloseAuthorityExtension = exports.TokenAccount = exports.ImmutableOwnerToken = exports.NonTransferableToken = exports.ConfidentialTransferToken = exports.TransferHookToken = exports.PermanentDelegateToken = exports.TokenMetadataToken = exports.MetadataPointerToken = exports.TransferFeeToken = exports.MetadataHelper = exports.getOptimalInitializationOrder = exports.TokenAccountBuilder = exports.TokenBuilder = exports.Token = void 0;
 // Core exports
 var token_1 = require("./core/token");
 Object.defineProperty(exports, "Token", { enumerable: true, get: function () { return token_1.Token; } });
@@ -58,3 +58,5 @@ var token_groups_1 = require("./extensions/token-groups");
 Object.defineProperty(exports, "TokenGroupExtension", { enumerable: true, get: function () { return token_groups_1.TokenGroupExtension; } });
 var member_pointer_1 = require("./extensions/member-pointer");
 Object.defineProperty(exports, "MemberPointerExtension", { enumerable: true, get: function () { return member_pointer_1.MemberPointerExtension; } });
+var token_freeze_1 = require("./extensions/token-freeze");
+Object.defineProperty(exports, "TokenFreezeExtension", { enumerable: true, get: function () { return token_freeze_1.TokenFreezeExtension; } });

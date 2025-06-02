@@ -19,3 +19,4 @@ export { InterestBearingExtension } from './extensions/interest-bearing';
 export { CpiGuardExtension } from './extensions/cpi-guard';
 export { TokenGroupExtension } from './extensions/token-groups';
 export { MemberPointerExtension } from './extensions/member-pointer';
+export { TokenFreezeExtension } from './extensions/token-freeze';

@@ -278,10 +278,15 @@ export class TokenBuilder {
      * khi chúng được tạo (frozen hoặc initialized)
      *
      * @param state - Trạng thái mặc định (AccountState.Frozen hoặc AccountState.Initialized)
+     * @param freezeAuthority - Địa chỉ có quyền đóng băng/mở đóng băng token (tùy chọn, mặc định là mint authority)
      * @returns this - để hỗ trợ method chaining
      */
-    addDefaultAccountState(state: AccountState): TokenBuilder {
+    addDefaultAccountState(state: AccountState, freezeAuthority?: PublicKey): TokenBuilder {
         this.defaultAccountState = state;
+        // Nếu có freezeAuthority, cập nhật freezeAuthority của mint
+        if (freezeAuthority) {
+            this.freezeAuthority = freezeAuthority;
+        }
         this.extensions.push(ExtensionType.DefaultAccountState);
         return this;
     }
