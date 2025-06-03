@@ -6,6 +6,9 @@ import {
   SystemProgram,
   sendAndConfirmTransaction,
   TransactionSignature,
+  TransactionInstruction,
+  ComputeBudgetProgram,
+  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
   ExtensionType,
@@ -53,6 +56,10 @@ export type MetadataUpdateResult = {
   metadata: TokenMetadata;
 };
 
+export type MetadataInstructionResult = {
+  instructions: TransactionInstruction[];
+  metadata?: TokenMetadata;
+};
 
 export class TokenMetadataToken extends Token {
   private metadata: MetadataConfig;
@@ -207,7 +214,7 @@ export class TokenMetadataToken extends Token {
       console.log(`Explorer: https://explorer.solana.com/tx/${updatePointerSignature}?cluster=devnet`);
       
       await new Promise(resolve => setTimeout(resolve, 2500));
-      console.log("step 5: create TokenMetadata...");
+      console.log("step 5: initialize metadata...");
       
       const initMetadataTx = new Transaction().add(
         createInitializeInstruction({
@@ -229,33 +236,25 @@ export class TokenMetadataToken extends Token {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Transaction create TokenMetadata succed: ${initMetadataSignature.substring(0, 16)}...`);
+      console.log(`Transaction initialize metadata succesed: ${initMetadataSignature.substring(0, 16)}...`);
       console.log(`Explorer: https://explorer.solana.com/tx/${initMetadataSignature}?cluster=devnet`);
       
+      // Thêm các trường metadata bổ sung
       if (metadata.additionalMetadata && Object.keys(metadata.additionalMetadata).length > 0) {
-        console.log("step 6: add update metadata ...");
+        console.log("step 6: adding additional metadata fields...");
         
-        let fieldCounter = 0;
         for (const [key, value] of Object.entries(metadata.additionalMetadata)) {
-          if (key.length === 0 || value.length === 0) continue;
-          
-          fieldCounter++;
-          console.log(`  add #${fieldCounter}: ${key}=${value}`);
-          
-    
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
+          try {
           const addFieldTx = new Transaction().add(
             createUpdateFieldInstruction({
               programId: TOKEN_2022_PROGRAM_ID,
               metadata: mint,
               updateAuthority: payer.publicKey,
               field: key,
-              value: value,
+                value: value
             })
           );
           
-          try {
             const addFieldSignature = await sendAndConfirmTransaction(
               connection,
               addFieldTx,
@@ -360,6 +359,21 @@ export class TokenMetadataToken extends Token {
     return { signature, metadata };
   }
 
+  // New method for wallet adapter compatibility
+  createUpdateMetadataFieldInstruction(
+    updateAuthority: PublicKey,
+    field: string,
+    value: string
+  ): TransactionInstruction {
+    return createUpdateFieldInstruction({
+      programId: TOKEN_2022_PROGRAM_ID,
+      metadata: this.mint,
+      updateAuthority: updateAuthority,
+      field,
+      value,
+    });
+  }
+
 
   async removeMetadataField(
     authority: Keypair,
@@ -385,6 +399,21 @@ export class TokenMetadataToken extends Token {
     const metadata = await this.getTokenMetadata();
     
     return { signature, metadata };
+  }
+
+  // New method for wallet adapter compatibility
+  createRemoveMetadataFieldInstruction(
+    updateAuthority: PublicKey,
+    key: string,
+    idempotent: boolean = false
+  ): TransactionInstruction {
+    return createRemoveKeyInstruction({
+      programId: TOKEN_2022_PROGRAM_ID,
+      metadata: this.mint,
+      updateAuthority: updateAuthority,
+      key,
+      idempotent
+    });
   }
 
 
@@ -416,6 +445,28 @@ export class TokenMetadataToken extends Token {
     const metadata = await this.getTokenMetadata();
     
     return { signature, metadata };
+  }
+
+  // New method for wallet adapter compatibility
+  createUpdateMetadataBatchInstructions(
+    updateAuthority: PublicKey,
+    fields: Record<string, string>
+  ): TransactionInstruction[] {
+    const instructions: TransactionInstruction[] = [];
+    
+    for (const [key, value] of Object.entries(fields)) {
+      instructions.push(
+        createUpdateFieldInstruction({
+          programId: TOKEN_2022_PROGRAM_ID,
+          metadata: this.mint,
+          updateAuthority: updateAuthority,
+          field: key,
+          value,
+        })
+      );
+    }
+    
+    return instructions;
   }
 
   async getNFTMetadata(): Promise<NFTMetadataContent> {
@@ -457,5 +508,381 @@ export class TokenMetadataToken extends Token {
       [currentAuthority],
       { commitment: 'confirmed' }
     );
+  }
+
+  // New method for wallet adapter compatibility
+  createUpdateMetadataAuthorityInstruction(
+    currentAuthority: PublicKey,
+    newAuthority: PublicKey | null
+  ): TransactionInstruction {
+    return createUpdateAuthorityInstruction({
+      programId: TOKEN_2022_PROGRAM_ID,
+      metadata: this.mint,
+      oldAuthority: currentAuthority,
+      newAuthority: newAuthority,
+    });
+  }
+
+  /**
+   * Tạo instruction ưu tiên với mức phí thích hợp
+   * @param priorityLevel Mức độ ưu tiên: 'low', 'medium', 'high'
+   * @returns Instruction phí ưu tiên 
+   */
+  static createPriorityFeeInstruction(
+    priorityLevel: 'low' | 'medium' | 'high' = 'medium'
+  ): TransactionInstruction {
+    let microLamports: number;
+    
+    switch(priorityLevel) {
+      case 'low': 
+        microLamports = 5_000;
+        break;
+      case 'high':
+        microLamports = 20_000;
+        break;
+      case 'medium':
+      default:
+        microLamports = 10_000;
+    }
+    
+    return ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports,
+    });
+  }
+
+  /**
+   * Tính toán và cấp phát không gian cho metadata
+   * @param connection Kết nối Solana
+   * @param payer PublicKey của người trả phí
+   * @param fieldName Tên trường metadata
+   * @param fieldValue Giá trị trường metadata
+   * @returns Instruction để cấp phát thêm không gian (hoặc null nếu không cần)
+   */
+  async calculateAndAllocateStorage(
+    connection: Connection,
+    payer: PublicKey,
+    fieldName: string, 
+    fieldValue: string
+  ): Promise<TransactionInstruction | null> {
+    try {
+      // Lấy metadata hiện tại để so sánh kích thước
+      const currentMetadata = await getTokenMetadata(
+        connection,
+        this.mint,
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+      
+      // Tìm trường metadata hiện tại để so sánh
+      let currentFieldValue = "";
+      if (fieldName === "uri" && currentMetadata) {
+        currentFieldValue = currentMetadata.uri || "";
+      } else if (currentMetadata?.additionalMetadata) {
+        for (const [key, value] of currentMetadata.additionalMetadata) {
+          if (key === fieldName) {
+            currentFieldValue = value;
+            break;
+          }
+        }
+      }
+      
+      // 1. So sánh kích thước: Chỉ cấp phát nếu giá trị mới dài hơn giá trị cũ
+      if (fieldValue.length <= currentFieldValue.length) {
+        console.log(`🔍 Không cần cấp phát không gian cho trường "${fieldName}": Giá trị mới (${fieldValue.length} bytes) <= giá trị cũ (${currentFieldValue.length} bytes)`);
+        return null; // Không cần cấp phát nếu giá trị mới ngắn hơn hoặc bằng
+      }
+      
+      // 2. Tính toán không gian thực sự cần thêm (chỉ phần tăng thêm)
+      const additionalSize = fieldValue.length - currentFieldValue.length;
+      
+      // Thêm padding cho phần mở rộng nếu cần
+      const paddingSize = fieldName === "uri" ? 8 : 4;
+      const totalAdditionalSize = additionalSize + paddingSize;
+      
+      // 3. Lấy chi phí rent exemption chính xác cho số byte bổ sung
+      const rentPerByte = await connection.getMinimumBalanceForRentExemption(1);
+      const requiredLamports = totalAdditionalSize * rentPerByte;
+      
+      console.log(`🔄 Cấp phát thêm ${totalAdditionalSize} bytes cho trường "${fieldName}" (${requiredLamports / LAMPORTS_PER_SOL} SOL)`);
+      
+      // 4. Tạo instruction chuyển SOL cho không gian bổ sung
+      return SystemProgram.transfer({
+        fromPubkey: payer,
+        toPubkey: this.mint,
+        lamports: requiredLamports,
+      });
+    } catch (error) {
+      console.error(`❌ Lỗi khi tính toán không gian cho trường "${fieldName}":`, error);
+      
+      // Nếu có lỗi khi tính toán, sử dụng phương pháp đơn giản
+      // Tính toán không gian cần thiết cho trường mới (phương pháp dự phòng)
+      const estimatedSize = fieldName.length + fieldValue.length + 16; // Tăng thêm padding
+      const rentPerByte = await connection.getMinimumBalanceForRentExemption(1);
+      
+      console.log(`⚠️ Sử dụng phương pháp dự phòng: cấp phát ${estimatedSize} bytes (${(estimatedSize * rentPerByte) / LAMPORTS_PER_SOL} SOL)`);
+      
+      return SystemProgram.transfer({
+        fromPubkey: payer,
+        toPubkey: this.mint,
+        lamports: estimatedSize * rentPerByte,
+      });
+    }
+  }
+
+  /**
+   * Tính toán và cấp phát không gian hiệu quả cho nhiều trường metadata
+   * @param connection Kết nối Solana
+   * @param payer PublicKey của người trả phí
+   * @param fields Các trường metadata cần cập nhật
+   * @returns Instruction để cấp phát thêm không gian (hoặc null nếu không cần)
+   */
+  async calculateBatchStorageInstruction(
+    connection: Connection,
+    payer: PublicKey,
+    fields: Record<string, string>
+  ): Promise<TransactionInstruction | null> {
+    try {
+      // 1. Kiểm tra metadata hiện tại để xác định trường nào mới hoặc cần thêm dung lượng
+      const currentMetadata = await getTokenMetadata(
+        connection,
+        this.mint,
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+      
+      // Chuyển additionalMetadata hiện tại thành đối tượng để dễ so sánh
+      const currentFields: Record<string, string> = {};
+      if (currentMetadata?.additionalMetadata) {
+        for (const [key, value] of currentMetadata.additionalMetadata) {
+          currentFields[key] = value;
+        }
+      }
+      
+      // 2. Tính toán kích thước cần thêm cho các trường mới và trường thay đổi
+      let additionalSize = 0;
+      const fieldChanges: Record<string, { old: number; new: number; diff: number }> = {};
+      
+      for (const [field, value] of Object.entries(fields)) {
+        // Xử lý trường đặc biệt "uri"
+        if (field === "uri" && currentMetadata) {
+          const currentValue = currentMetadata.uri || "";
+          if (value.length > currentValue.length) {
+            const diff = value.length - currentValue.length;
+            additionalSize += diff;
+            fieldChanges[field] = { old: currentValue.length, new: value.length, diff };
+          }
+          continue;
+        }
+
+        // Xử lý các trường thông thường
+        const currentValue = currentFields[field];
+        if (currentValue === undefined) {
+          // Trường mới: cần không gian cho cả key và value
+          additionalSize += field.length + value.length + 8; // overhead cho mỗi cặp key-value
+          fieldChanges[field] = { old: 0, new: value.length, diff: field.length + value.length + 8 };
+        } else if (value.length > currentValue.length) {
+          // Trường hiện có nhưng cần thêm không gian (giá trị mới dài hơn)
+          const diff = value.length - currentValue.length;
+          additionalSize += diff;
+          fieldChanges[field] = { old: currentValue.length, new: value.length, diff };
+        }
+        // Nếu giá trị mới ngắn hơn hoặc bằng, không cần thêm không gian
+      }
+      
+      // 3. In thông tin chi tiết về những trường cần cấp phát thêm
+      if (Object.keys(fieldChanges).length > 0) {
+        console.log(`📊 Chi tiết thay đổi kích thước trường:`);
+        for (const [field, change] of Object.entries(fieldChanges)) {
+          console.log(`   - "${field}": ${change.old} -> ${change.new} bytes (+${change.diff} bytes)`);
+        }
+      }
+      
+      // 4. Nếu không cần thêm không gian, trả về null
+      if (additionalSize <= 0) {
+        console.log(`✅ Không cần cấp phát thêm không gian cho ${Object.keys(fields).length} trường`);
+        return null;
+      }
+      
+      // 5. Thêm padding để đảm bảo đủ không gian cho metadata
+      const paddingSize = Math.min(32, additionalSize * 0.1); // Padding 10% nhưng không quá 32 bytes
+      additionalSize += paddingSize;
+      
+      // 6. Lấy chi phí rent exemption cho mỗi byte
+      const rentPerByte = await connection.getMinimumBalanceForRentExemption(1);
+      const requiredLamports = additionalSize * rentPerByte;
+      
+      // 7. Log thông tin chi phí
+      console.log(`🔄 Cấp phát thêm ${additionalSize} bytes (${(requiredLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL) cho ${Object.keys(fieldChanges).length} trường`);
+      
+      // 8. Tạo instruction chuyển SOL cho không gian bổ sung
+      return SystemProgram.transfer({
+        fromPubkey: payer,
+        toPubkey: this.mint,
+        lamports: requiredLamports,
+      });
+    } catch (error) {
+      console.error("❌ Lỗi tính toán không gian cho batch metadata:", error);
+      
+      // Phương pháp dự phòng: tính toán đơn giản
+      let totalSize = 0;
+      for (const [field, value] of Object.entries(fields)) {
+        totalSize += field.length + value.length + 8;
+      }
+      
+      // Thêm padding
+      totalSize += 32;
+      
+      // Lấy chi phí rent exemption
+      const rentPerByte = await connection.getMinimumBalanceForRentExemption(1);
+      const backupLamports = totalSize * rentPerByte * 0.25; // Chỉ cấp phát 25% kích thước ước tính để tiết kiệm
+      
+      console.log(`⚠️ Sử dụng phương pháp dự phòng: cấp phát cho ${totalSize} bytes × 25% = ${(backupLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL`);
+      
+      return SystemProgram.transfer({
+        fromPubkey: payer,
+        toPubkey: this.mint,
+        lamports: backupLamports,
+      });
+    }
+  }
+
+  /**
+   * Cập nhật metadata với tối ưu hóa
+   * @param connection Kết nối Solana
+   * @param wallet Đối tượng wallet-adapter
+   * @param fieldName Tên trường cần cập nhật
+   * @param fieldValue Giá trị mới
+   * @param options Tùy chọn (phí ưu tiên, skipPreflight...)
+   * @returns Thông tin giao dịch
+   */
+  async updateMetadataOptimized(
+    connection: Connection,
+    wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+    fieldName: string,
+    fieldValue: string,
+    options: {
+      priorityLevel?: 'low' | 'medium' | 'high';
+      skipPreflight?: boolean;
+      allocateStorage?: boolean;
+    } = {}
+  ): Promise<{ signature: string }> {
+    const { priorityLevel = 'medium', skipPreflight = true, allocateStorage = true } = options;
+    
+    // Tạo transaction
+    const transaction = new Transaction();
+    
+    // 1. Thêm instruction phí ưu tiên
+    transaction.add(
+      TokenMetadataToken.createPriorityFeeInstruction(priorityLevel)
+    );
+    
+    // 2. Thêm instruction cấp phát không gian nếu cần
+    if (allocateStorage) {
+      const storageIx = await this.calculateAndAllocateStorage(
+        connection, wallet.publicKey, fieldName, fieldValue
+      );
+      if (storageIx) {
+        transaction.add(storageIx);
+      }
+    }
+    
+    // 3. Thêm instruction cập nhật metadata
+    const updateIx = this.createUpdateMetadataFieldInstruction(
+      wallet.publicKey, fieldName, fieldValue
+    );
+    transaction.add(updateIx);
+    
+    // Thiết lập giao dịch
+    transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    transaction.feePayer = wallet.publicKey;
+    
+    // Ký và gửi giao dịch
+    const signedTx = await wallet.signTransaction(transaction);
+    const signature = await connection.sendRawTransaction(
+      signedTx.serialize(),
+      { skipPreflight }
+    );
+    
+    // Xác nhận giao dịch
+    await connection.confirmTransaction(signature, 'confirmed');
+    
+    return { signature };
+  }
+
+  /**
+   * Cập nhật nhiều trường metadata với tối ưu hóa 
+   * @param connection Kết nối Solana
+   * @param wallet Đối tượng wallet-adapter 
+   * @param fields Object chứa các cặp key-value cần cập nhật
+   * @param options Tùy chọn cấu hình
+   * @returns Mảng chữ ký giao dịch
+   */
+  async updateMetadataBatchOptimized(
+    connection: Connection,
+    wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+    fields: Record<string, string>,
+    options: {
+      maxFieldsPerTransaction?: number;
+      priorityLevel?: 'low' | 'medium' | 'high';
+      skipPreflight?: boolean;
+      allocateStorage?: boolean;
+    } = {}
+  ): Promise<{ signatures: string[] }> {
+    const { 
+      maxFieldsPerTransaction = 2, 
+      priorityLevel = 'medium',
+      skipPreflight = true,
+      allocateStorage = true
+    } = options;
+    
+    const fieldEntries = Object.entries(fields);
+    const signatures: string[] = [];
+    
+    // Chia thành các giao dịch nhỏ hơn
+    for (let i = 0; i < fieldEntries.length; i += maxFieldsPerTransaction) {
+      const batch = fieldEntries.slice(i, i + maxFieldsPerTransaction);
+      const batchFields = Object.fromEntries(batch);
+      
+      const transaction = new Transaction();
+      
+      // Thêm instruction phí ưu tiên
+      transaction.add(
+        TokenMetadataToken.createPriorityFeeInstruction(priorityLevel)
+      );
+      
+      // Thêm instruction cấp phát không gian nếu cần - PHƯƠNG PHÁP 1 & 2
+      if (allocateStorage) {
+        // Sử dụng phương pháp tối ưu tính toán không gian cho tất cả trường trong batch
+        const storageIx = await this.calculateBatchStorageInstruction(
+          connection, wallet.publicKey, batchFields
+        );
+        if (storageIx) {
+          transaction.add(storageIx);
+        }
+      }
+      
+      // Thêm instruction cập nhật cho mỗi trường 
+      for (const [field, value] of batch) {
+        transaction.add(
+          this.createUpdateMetadataFieldInstruction(wallet.publicKey, field, value)
+        );
+      }
+      
+      // Thiết lập giao dịch
+      transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      transaction.feePayer = wallet.publicKey;
+      
+      // Ký và gửi giao dịch
+      const signedTx = await wallet.signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(
+        signedTx.serialize(),
+        { skipPreflight }
+      );
+      
+      await connection.confirmTransaction(signature, 'confirmed');
+      signatures.push(signature);
+    }
+    
+    return { signatures };
   }
 } 

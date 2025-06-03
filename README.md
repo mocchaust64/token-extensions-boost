@@ -192,13 +192,10 @@ The SDK already supports the following Token Extensions:
 - ✅ **Permanent Delegate**: Permanently delegate token management authority to another address
 - ✅ **Interest-Bearing**: Create tokens that accrue interest over time
 - ✅ **Transfer Hook**: Execute custom logic on token transfers through a separate program
-- ✅ **Confidential Transfer**: Execute confidential token transfers that hide amounts
 - ✅ **Default Account State**: Set default state for newly created token accounts
 - ✅ **Mint Close Authority**: Define authority to close a mint account
 - ✅ **CPI Guard**: Protect token operations from cross-program invocation (CPI) attacks
-- ✅ **Token Groups & Group Pointer**: Group multiple tokens under a shared classification or identity
 - ✅ **Member Pointer**: Link individual tokens to a token group via on-chain metadata
-- ✅ **Required Memo**: Require a memo to be included with each token transfer
 - ✅ **Close Authority**: Define who can close a specific token account
 
 ## Installation
