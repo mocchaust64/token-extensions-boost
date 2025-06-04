@@ -6,18 +6,18 @@ import {
 } from '@solana/spl-token';
 
 /**
- * Ví dụ minh họa cách sử dụng TokenFreezeExtension với wallet adapter
+ * Example demonstrating how to use TokenFreezeExtension with wallet adapter
  * 
- * Lưu ý: Đây là code mẫu để tham khảo, cần được tích hợp vào ứng dụng React/Web thực tế
- * với thư viện wallet adapter (@solana/wallet-adapter-*)
+ * Note: This is sample code for reference, intended to be integrated into a real React/Web
+ * application with wallet adapter library (@solana/wallet-adapter-*)
  */
 
 /**
- * Hàm đóng băng tài khoản token với wallet adapter
+ * Function to freeze a token account with wallet adapter
  */
 async function freezeAccountWithWalletAdapter(
   connection: Connection, 
-  wallet: any, // WalletContextState từ useWallet() của @solana/wallet-adapter-react
+  wallet: any, // WalletContextState from useWallet() of @solana/wallet-adapter-react
   account: PublicKey,
   mint: PublicKey
 ) {
@@ -26,50 +26,50 @@ async function freezeAccountWithWalletAdapter(
       throw new Error("Wallet not connected");
     }
     
-    console.log("Đóng băng tài khoản token...");
+    console.log("Freezing token account...");
     
-    // Sử dụng phương thức mới để chuẩn bị transaction
+    // Use the new method to prepare the transaction
     const transaction = TokenFreezeExtension.prepareFreezeAccountTransaction(
-      account,         // Tài khoản token cần đóng băng
-      mint,            // Địa chỉ mint của token
+      account,         // Token account to freeze
+      mint,            // Mint address of the token
       wallet.publicKey, // Freeze authority
       wallet.publicKey  // Fee payer
     );
     
-    // Lấy blockhash
+    // Get blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.lastValidBlockHeight = lastValidBlockHeight;
     
-    // Ký transaction với wallet adapter
+    // Sign transaction with wallet adapter
     const signedTx = await wallet.signTransaction(transaction);
     
-    // Gửi transaction đã ký
+    // Send signed transaction
     const signature = await connection.sendRawTransaction(signedTx.serialize());
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature,
       blockhash,
       lastValidBlockHeight
     });
     
-    console.log(`Tài khoản token đã được đóng băng!`);
+    console.log(`Token account has been frozen!`);
     console.log(`Transaction signature: ${signature}`);
     
     return signature;
   } catch (error) {
-    console.error("Lỗi khi đóng băng tài khoản token:", error);
+    console.error("Error freezing token account:", error);
     throw error;
   }
 }
 
 /**
- * Hàm mở đóng băng tài khoản token với wallet adapter
+ * Function to thaw a token account with wallet adapter
  */
 async function thawAccountWithWalletAdapter(
   connection: Connection, 
-  wallet: any, // WalletContextState từ useWallet() của @solana/wallet-adapter-react
+  wallet: any, // WalletContextState from useWallet() of @solana/wallet-adapter-react
   account: PublicKey,
   mint: PublicKey
 ) {
@@ -78,50 +78,50 @@ async function thawAccountWithWalletAdapter(
       throw new Error("Wallet not connected");
     }
     
-    console.log("Mở đóng băng tài khoản token...");
+    console.log("Thawing token account...");
     
-    // Sử dụng phương thức mới để chuẩn bị transaction
+    // Use the new method to prepare the transaction
     const transaction = TokenFreezeExtension.prepareThawAccountTransaction(
-      account,         // Tài khoản token cần mở đóng băng
-      mint,            // Địa chỉ mint của token
+      account,         // Token account to thaw
+      mint,            // Mint address of the token
       wallet.publicKey, // Freeze authority
       wallet.publicKey  // Fee payer
     );
     
-    // Lấy blockhash
+    // Get blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.lastValidBlockHeight = lastValidBlockHeight;
     
-    // Ký transaction với wallet adapter
+    // Sign transaction with wallet adapter
     const signedTx = await wallet.signTransaction(transaction);
     
-    // Gửi transaction đã ký
+    // Send signed transaction
     const signature = await connection.sendRawTransaction(signedTx.serialize());
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature,
       blockhash,
       lastValidBlockHeight
     });
     
-    console.log(`Tài khoản token đã được mở đóng băng!`);
+    console.log(`Token account has been thawed!`);
     console.log(`Transaction signature: ${signature}`);
     
     return signature;
   } catch (error) {
-    console.error("Lỗi khi mở đóng băng tài khoản token:", error);
+    console.error("Error thawing token account:", error);
     throw error;
   }
 }
 
 /**
- * Hàm cập nhật trạng thái mặc định của token với wallet adapter
+ * Function to update default account state of token with wallet adapter
  */
 async function updateDefaultAccountStateWithWalletAdapter(
   connection: Connection, 
-  wallet: any, // WalletContextState từ useWallet() của @solana/wallet-adapter-react
+  wallet: any, // WalletContextState from useWallet() of @solana/wallet-adapter-react
   mint: PublicKey,
   accountState: AccountState
 ) {
@@ -130,51 +130,51 @@ async function updateDefaultAccountStateWithWalletAdapter(
       throw new Error("Wallet not connected");
     }
     
-    console.log(`Cập nhật trạng thái mặc định của token sang ${accountState === AccountState.Frozen ? 'Frozen' : 'Initialized'}...`);
+    console.log(`Updating default account state to ${accountState === AccountState.Frozen ? 'Frozen' : 'Initialized'}...`);
     
-    // Sử dụng phương thức mới để chuẩn bị transaction
+    // Use the new method to prepare the transaction
     const transaction = TokenFreezeExtension.prepareUpdateDefaultAccountStateTransaction(
-      mint,            // Địa chỉ mint của token
-      accountState,    // Trạng thái mặc định mới
+      mint,            // Mint address of the token
+      accountState,    // New default state
       wallet.publicKey, // Freeze authority
       wallet.publicKey  // Fee payer
     );
     
-    // Lấy blockhash
+    // Get blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.lastValidBlockHeight = lastValidBlockHeight;
     
-    // Ký transaction với wallet adapter
+    // Sign transaction with wallet adapter
     const signedTx = await wallet.signTransaction(transaction);
     
-    // Gửi transaction đã ký
+    // Send signed transaction
     const signature = await connection.sendRawTransaction(signedTx.serialize());
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature,
       blockhash,
       lastValidBlockHeight
     });
     
-    console.log(`Trạng thái mặc định của token đã được cập nhật!`);
+    console.log(`Token default state has been updated!`);
     console.log(`Transaction signature: ${signature}`);
     
     return signature;
   } catch (error) {
-    console.error("Lỗi khi cập nhật trạng thái mặc định của token:", error);
+    console.error("Error updating token default state:", error);
     throw error;
   }
 }
 
 /**
- * Tạo instruction để đóng băng và build transaction riêng
- * Ví dụ về cách sử dụng các hàm instruction riêng lẻ
+ * Create freeze instruction and build custom transaction
+ * Example of how to use individual instruction functions
  */
 async function buildCustomFreezeTransaction(
   connection: Connection, 
-  wallet: any, // WalletContextState từ useWallet() của @solana/wallet-adapter-react
+  wallet: any, // WalletContextState from useWallet() of @solana/wallet-adapter-react
   account: PublicKey,
   mint: PublicKey
 ) {
@@ -183,9 +183,9 @@ async function buildCustomFreezeTransaction(
       throw new Error("Wallet not connected");
     }
     
-    console.log("Tạo instruction đóng băng tùy chỉnh...");
+    console.log("Creating custom freeze instruction...");
     
-    // Tạo instruction riêng lẻ
+    // Create individual instruction
     const freezeInstruction = TokenFreezeExtension.createFreezeAccountInstruction(
       account,
       mint,
@@ -194,70 +194,93 @@ async function buildCustomFreezeTransaction(
       TOKEN_2022_PROGRAM_ID
     );
     
-    // Sử dụng hàm tiện ích để tạo transaction
+    // Use utility function to create transaction
     const transaction = TokenFreezeExtension.buildTransaction(
       [freezeInstruction],
       wallet.publicKey
     );
     
-    // Từ đây, bạn có thể thêm các instruction khác vào transaction
-    // transaction.add(...otherInstructions);
+    // Additional customization can be done here...
     
-    // Lấy blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.lastValidBlockHeight = lastValidBlockHeight;
-    
-    // Trả về transaction đã tạo để ký và gửi trong ứng dụng thực tế
     return transaction;
   } catch (error) {
-    console.error("Lỗi khi tạo transaction:", error);
+    console.error("Error creating custom freeze transaction:", error);
     throw error;
   }
 }
 
 /**
- * Ví dụ cách sử dụng trong component React với wallet adapter
+ * Sample React component usage (for reference)
  * 
- * Đây là giả định code trong component React:
- * 
- * ```tsx
- * import { useConnection, useWallet } from '@solana/wallet-adapter-react';
- * import { Button } from '@/components/ui/button';
- * 
- * export function FreezeTokenButton({ tokenAccount, mintAddress }) {
- *   const { connection } = useConnection();
- *   const wallet = useWallet();
- *   
- *   const handleClick = async () => {
- *     try {
- *       await freezeAccountWithWalletAdapter(
- *         connection,
- *         wallet,
- *         new PublicKey(tokenAccount),
- *         new PublicKey(mintAddress)
- *       );
- *       
- *       // Hiển thị thông báo thành công
- *     } catch (error) {
- *       console.error("Lỗi:", error);
- *       // Hiển thị thông báo lỗi
- *     }
- *   };
- *   
- *   return (
- *     <Button 
- *       onClick={handleClick}
- *       disabled={!wallet.connected}
- *     >
- *       Đóng Băng Token
- *     </Button>
- *   );
- * }
- * ```
+ * This demonstrates how these functions might be used in a React component
+ * with wallet adapter. Not meant to be executed directly.
  */
+/*
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
-// Xuất các hàm để sử dụng trong ứng dụng thực tế
+function TokenFreezeComponent() {
+  const { connection } = useConnection();
+  const wallet = useWallet();
+  const [tokenAccount, setTokenAccount] = useState<string | null>(null);
+  const [mint, setMint] = useState<string | null>(null);
+  
+  const handleFreeze = async () => {
+    if (!tokenAccount || !mint) return;
+    
+    try {
+      const signature = await freezeAccountWithWalletAdapter(
+        connection,
+        wallet,
+        new PublicKey(tokenAccount),
+        new PublicKey(mint)
+      );
+      
+      console.log(`Account frozen: ${signature}`);
+    } catch (error) {
+      console.error("Failed to freeze account:", error);
+    }
+  };
+  
+  const handleThaw = async () => {
+    if (!tokenAccount || !mint) return;
+    
+    try {
+      const signature = await thawAccountWithWalletAdapter(
+        connection,
+        wallet,
+        new PublicKey(tokenAccount),
+        new PublicKey(mint)
+      );
+      
+      console.log(`Account thawed: ${signature}`);
+    } catch (error) {
+      console.error("Failed to thaw account:", error);
+    }
+  };
+  
+  return (
+    <div>
+      <WalletMultiButton />
+      
+      <div>
+        <input 
+          placeholder="Token Account" 
+          onChange={e => setTokenAccount(e.target.value)} 
+        />
+        <input 
+          placeholder="Mint Address" 
+          onChange={e => setMint(e.target.value)} 
+        />
+        
+        <button onClick={handleFreeze}>Freeze Account</button>
+        <button onClick={handleThaw}>Thaw Account</button>
+      </div>
+    </div>
+  );
+}
+*/
+
 export {
   freezeAccountWithWalletAdapter,
   thawAccountWithWalletAdapter,

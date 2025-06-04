@@ -1,102 +1,132 @@
 import { Connection, PublicKey, Signer, TransactionInstruction, Commitment } from "@solana/web3.js";
-import { Account } from "@solana/spl-token";
+import { Account, Mint } from "@solana/spl-token";
 export declare class Token {
     protected connection: Connection;
     protected mint: PublicKey;
-    constructor(connection: Connection, mint: PublicKey);
+    protected _decimals?: number;
+    protected _mintInfo?: Mint;
+    constructor(connection: Connection, mint: PublicKey, decimals?: number);
     getMint(): PublicKey;
     getConnection(): Connection;
     getProgramId(): PublicKey;
     /**
-     * Lấy địa chỉ Associated Token Account cho một ví
+     * Get the token decimals
+     * If not set, it will query information from the blockchain
      *
-     * @param owner - Địa chỉ ví chủ sở hữu
-     * @param allowOwnerOffCurve - Cho phép owner là địa chỉ ngoài đường cong (mặc định: false)
-     * @returns Địa chỉ của Associated Token Account
+     * @param forceRefresh - Force refresh information from blockchain if true
+     * @returns Promise<number> - The token's decimals
+     */
+    getDecimals(forceRefresh?: boolean): Promise<number>;
+    /**
+     * Set decimals for the token
+     *
+     * @param decimals - Number of decimals to set
+     */
+    setDecimals(decimals: number): void;
+    /**
+     * Get complete mint information from blockchain
+     *
+     * @param forceRefresh - Force refresh information from blockchain if true
+     * @returns Promise<Mint> - Detailed mint information
+     */
+    getMintInfo(forceRefresh?: boolean): Promise<Mint>;
+    /**
+     * Get Associated Token Account address for a wallet
+     *
+     * @param owner - Wallet address of the owner
+     * @param allowOwnerOffCurve - Allow owner to be an address off the curve (default: false)
+     * @returns The Associated Token Account address
      */
     getAssociatedAddress(owner: PublicKey, allowOwnerOffCurve?: boolean): Promise<PublicKey>;
     /**
-     * Tạo instruction để khởi tạo Associated Token Account
+     * Create instruction to initialize Associated Token Account
      *
-     * @param payer - Người trả phí giao dịch
-     * @param associatedAccount - Địa chỉ Associated Token Account
-     * @param owner - Địa chỉ ví chủ sở hữu
-     * @returns TransactionInstruction để tạo Associated Token Account
+     * @param payer - Transaction fee payer
+     * @param associatedAccount - Associated Token Account address
+     * @param owner - Wallet address of the owner
+     * @returns TransactionInstruction to create Associated Token Account
      */
     createAssociatedTokenAccountInstruction(payer: PublicKey, associatedAccount: PublicKey, owner: PublicKey): TransactionInstruction;
     /**
-     * Tạo instructions để mint token vào tài khoản
+     * Create instructions to mint tokens to an account
      *
-     * @param destination - Địa chỉ tài khoản nhận token
-     * @param authority - Authority được phép mint token
-     * @param amount - Số lượng token cần mint
-     * @returns Object chứa instructions
+     * @param destination - Address of the account receiving tokens
+     * @param authority - Authority allowed to mint tokens
+     * @param amount - Amount of tokens to mint
+     * @returns Object containing instructions
      */
     createMintToInstructions(destination: PublicKey, authority: PublicKey, amount: bigint): {
         instructions: TransactionInstruction[];
     };
     /**
-     * Tạo instructions để mint token có kiểm tra decimals
+     * Create instructions to mint tokens with decimals check
      *
-     * @param destination - Địa chỉ tài khoản nhận token
-     * @param authority - Authority được phép mint token
-     * @param amount - Số lượng token cần mint
-     * @param decimals - Số decimals của token
-     * @returns Object chứa instructions
+     * @param destination - Address of the account receiving tokens
+     * @param authority - Authority allowed to mint tokens
+     * @param amount - Amount of tokens to mint
+     * @param decimals - Token decimals
+     * @returns Object containing instructions
      */
     createMintToCheckedInstructions(destination: PublicKey, authority: PublicKey, amount: bigint, decimals: number): {
         instructions: TransactionInstruction[];
     };
     /**
-     * Tạo instructions để tạo tài khoản token và mint token
+     * Create instructions to create token account and mint tokens
      *
-     * @param owner - Chủ sở hữu tài khoản token
-     * @param payer - Người trả phí giao dịch
-     * @param amount - Số lượng token cần mint
-     * @param mintAuthority - Authority được phép mint token
-     * @returns Object chứa instructions và địa chỉ tài khoản token
+     * @param owner - Owner of the token account
+     * @param payer - Transaction fee payer
+     * @param amount - Amount of tokens to mint
+     * @param mintAuthority - Authority allowed to mint tokens
+     * @returns Object containing instructions and token account address
      */
     createAccountAndMintToInstructions(owner: PublicKey, payer: PublicKey, amount: bigint, mintAuthority: PublicKey): Promise<{
         instructions: TransactionInstruction[];
         address: PublicKey;
     }>;
     /**
-     * Tạo instructions để đốt token
+     * Create instructions to burn tokens
      *
-     * @param account - Địa chỉ tài khoản chứa token cần đốt
-     * @param owner - Chủ sở hữu tài khoản
-     * @param amount - Số lượng token cần đốt
-     * @param decimals - Số decimals của token
-     * @returns Object chứa instructions
+     * @param account - Address of the account containing tokens to burn
+     * @param owner - Account owner
+     * @param amount - Amount of tokens to burn
+     * @param decimals - Token decimals
+     * @returns Object containing instructions
      */
     createBurnInstructions(account: PublicKey, owner: PublicKey, amount: bigint, decimals: number): {
         instructions: TransactionInstruction[];
     };
     /**
-     * Tạo instructions để chuyển token
+     * Create instructions to transfer tokens
      *
-     * @param source - Địa chỉ tài khoản nguồn
-     * @param destination - Địa chỉ wallet hoặc token account đích
-     * @param owner - Chủ sở hữu tài khoản nguồn và người trả phí
-     * @param amount - Số lượng token cần chuyển
-     * @param decimals - Số decimals của token
-     * @param options - Các tùy chọn bổ sung
-     * @returns Object chứa instructions và địa chỉ tài khoản đích
+     * Usage guide:
+     * - To transfer between existing token accounts: Use token account addresses directly for source and destination
+     * - To transfer to a wallet without a token account: Use createDestinationIfNeeded=true and allowOwnerOffCurve=true
+     *   if the address might be off-curve
+     * - If you get a "Provided owner is not allowed" error, try using skipSourceOwnerCheck=true
+     *
+     * @param source - Source token account address
+     * @param destination - Destination wallet or token account address
+     * @param owner - Owner of source account and fee payer
+     * @param amount - Amount of tokens to transfer
+     * @param decimals - Token decimals
+     * @param options - Additional options
+     * @returns Object containing instructions and destination account address
      */
     createTransferInstructions(source: PublicKey, destination: PublicKey, owner: PublicKey, amount: bigint, decimals: number, options?: {
         memo?: string;
         createDestinationIfNeeded?: boolean;
         feePayer?: PublicKey;
+        allowOwnerOffCurve?: boolean;
     }): Promise<{
         instructions: TransactionInstruction[];
         destinationAddress: PublicKey;
     }>;
     /**
-     * Tạo hoặc lấy tài khoản token
+     * Create or get token account
      *
-     * @param payer - Người trả phí giao dịch
-     * @param owner - Chủ sở hữu tài khoản token
-     * @returns Object chứa instructions và địa chỉ tài khoản token
+     * @param payer - Transaction fee payer
+     * @param owner - Token account owner
+     * @returns Object containing instructions and token account address
      */
     createTokenAccountInstructions(payer: PublicKey, owner: PublicKey): Promise<{
         instructions: TransactionInstruction[];
@@ -104,22 +134,50 @@ export declare class Token {
         accountExists: boolean;
     }>;
     /**
-     * Tạo hoặc lấy tài khoản token liên kết cho một địa chỉ ví
+     * Create or get associated token account for a wallet address
      *
-     * @param payer - Người trả phí giao dịch (dạng Keypair)
-     * @param owner - Chủ sở hữu tài khoản token
-     * @param allowOwnerOffCurve - Cho phép chủ sở hữu nằm ngoài đường cong (mặc định: false)
-     * @param commitment - Mức cam kết xác nhận giao dịch (mặc định: "confirmed")
-     * @param options - Các tùy chọn giao dịch
-     * @returns Thông tin tài khoản token đã tạo hoặc hiện có
+     * @param payer - Transaction fee payer (Keypair)
+     * @param owner - Token account owner
+     * @param allowOwnerOffCurve - Allow owner to be off-curve (default: false)
+     * @param commitment - Transaction confirmation commitment level (default: "confirmed")
+     * @param options - Transaction options
+     * @returns Information about created or existing token account
      */
     getOrCreateTokenAccount(payer: Signer, owner: PublicKey, allowOwnerOffCurve?: boolean, commitment?: Commitment, options?: any): Promise<Account>;
     /**
-     * Lấy thông tin về tài khoản token
+     * Get information about a token account
      *
-     * @param tokenAccount - Địa chỉ tài khoản token cần lấy thông tin
-     * @param commitment - Mức độ commit khi lấy dữ liệu (mặc định: confirmed)
-     * @returns Thông tin về tài khoản token
+     * @param address - Token account address to query
+     * @param commitment - Query commitment level
+     * @returns Promise<Account> - Detailed information about the token account
      */
-    getAccount(tokenAccount: PublicKey, commitment?: Commitment): Promise<Account>;
+    getAccount(address: PublicKey, commitment?: Commitment): Promise<Account>;
+    /**
+     * Create instructions to transfer tokens using Permanent Delegate
+     *
+     * Usage guide:
+     * - Permanent delegate can transfer tokens from any account without the owner's consent
+     * - Use token account addresses for both source and destination to avoid errors
+     * - If destination doesn't exist and needs to be created, set createDestinationIfNeeded=true
+     * - If encountering off-curve address errors, set allowOwnerOffCurve=true
+     * - You can provide decimals to avoid blockchain query if known in advance
+     *
+     * @param source - Source token account address
+     * @param destination - Destination wallet or token account address
+     * @param delegate - Permanent delegate address with token transfer authority
+     * @param amount - Amount of tokens to transfer
+     * @param options - Additional options
+     * @returns Object containing instructions and destination account address
+     */
+    createPermanentDelegateTransferInstructions(source: PublicKey, destination: PublicKey, delegate: PublicKey, amount: bigint, options?: {
+        memo?: string;
+        createDestinationIfNeeded?: boolean;
+        feePayer?: PublicKey;
+        decimals?: number;
+        allowOwnerOffCurve?: boolean;
+        verifySourceBalance?: boolean;
+    }): Promise<{
+        instructions: TransactionInstruction[];
+        destinationAddress: PublicKey;
+    }>;
 }

@@ -2,16 +2,16 @@ import { PublicKey } from '@solana/web3.js';
 import { ExtensionType, TOKEN_2022_PROGRAM_ID, createInitializeInterestBearingMintInstruction } from '@solana/spl-token';
 
 /**
- * Class cho tính năng Interest-Bearing (hưởng lãi) cho token
+ * Class for Interest-Bearing token functionality
  */
 export class InterestBearingExtension {
   /**
-   * Tạo instruction để khởi tạo Interest-Bearing cho mint
-   * @param mint - Địa chỉ mint
-   * @param rateAuthority - Địa chỉ có quyền thay đổi lãi suất
-   * @param rate - Lãi suất (basis points, 10000 = 100%)
-   * @param programId - Program ID của Token Extension
-   * @returns Instruction để khởi tạo Interest-Bearing
+   * Create instruction to initialize Interest-Bearing for mint
+   * @param mint - Mint address
+   * @param rateAuthority - Authority address that can change interest rate
+   * @param rate - Interest rate (basis points, 10000 = 100%)
+   * @param programId - Token Extension Program ID
+   * @returns Instruction to initialize Interest-Bearing
    */
   static createInitializeInterestBearingMintInstruction(
     mint: PublicKey,
@@ -28,12 +28,12 @@ export class InterestBearingExtension {
   }
 
   /**
-   * Tạo instruction để cập nhật lãi suất
-   * @param mint - Địa chỉ mint
-   * @param rateAuthority - Địa chỉ có quyền thay đổi lãi suất
-   * @param rate - Lãi suất mới (basis points, 10000 = 100%)
-   * @param programId - Program ID của Token Extension
-   * @returns Instruction để cập nhật lãi suất
+   * Create instruction to update interest rate
+   * @param mint - Mint address
+   * @param rateAuthority - Authority address that can change interest rate
+   * @param rate - New interest rate (basis points, 10000 = 100%)
+   * @param programId - Token Extension Program ID
+   * @returns Instruction to update interest rate
    */
   static createUpdateRateInterestBearingMintInstruction(
     mint: PublicKey,
@@ -41,8 +41,8 @@ export class InterestBearingExtension {
     rate: number,
     programId = TOKEN_2022_PROGRAM_ID
   ) {
-    // Trong thực tế, bạn sẽ gọi hàm từ @solana/spl-token
-    // Đây là phiên bản giả lập cho mục đích demo
+    // In practice, you would call a function from @solana/spl-token
+    // This is a simulated version for demo purposes
     return {
       programId,
       keys: [
@@ -54,31 +54,31 @@ export class InterestBearingExtension {
   }
 
   /**
-   * Tính toán số lượng token hiện tại bao gồm lãi
-   * @param initialAmount - Số lượng ban đầu
-   * @param rate - Lãi suất (basis points, 10000 = 100%)
-   * @param timeInSeconds - Thời gian đã trôi qua (giây)
-   * @returns Số lượng token hiện tại bao gồm lãi
+   * Calculate current token amount including interest
+   * @param initialAmount - Initial amount
+   * @param rate - Interest rate (basis points, 10000 = 100%)
+   * @param timeInSeconds - Elapsed time (seconds)
+   * @returns Current token amount including interest
    */
   static calculateInterest(
     initialAmount: bigint,
     rate: number,
     timeInSeconds: number
   ): bigint {
-    // Công thức tính lãi:
+    // Interest calculation formula:
     // amount * (1 + rate/10000) ^ (timeInSeconds / secondsInYear)
     const secondsInYear = 31536000; // 365 * 24 * 60 * 60
     
-    // Chuyển đổi rate từ basis points sang dạng thập phân
+    // Convert rate from basis points to decimal
     const rateDecimal = rate / 10000;
     
-    // Tính số năm
+    // Calculate years
     const years = timeInSeconds / secondsInYear;
     
-    // Tính hệ số lãi
+    // Calculate interest factor
     const interestFactor = Math.pow(1 + rateDecimal, years);
     
-    // Tính số lượng token hiện tại
+    // Calculate current token amount
     return BigInt(Math.floor(Number(initialAmount) * interestFactor));
   }
 } 

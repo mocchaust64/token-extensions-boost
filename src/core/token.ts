@@ -9,16 +9,23 @@ import {
   createTransferCheckedInstruction,
   createBurnCheckedInstruction,
   getOrCreateAssociatedTokenAccount,
-  Account
+  getMint,
+  Account,
+  Mint,
+  TokenOwnerOffCurveError,
+  getAssociatedTokenAddressSync
 } from "@solana/spl-token";
 
 export class Token {
   protected connection: Connection;
   protected mint: PublicKey;
+  protected _decimals?: number; // No default value, can be undefined
+  protected _mintInfo?: Mint; // Store mint information to avoid re-querying
 
-  constructor(connection: Connection, mint: PublicKey) {
+  constructor(connection: Connection, mint: PublicKey, decimals?: number) {
     this.connection = connection;
     this.mint = mint;
+    this._decimals = decimals; // Set decimals if provided
   }
 
   getMint(): PublicKey {
@@ -34,11 +41,67 @@ export class Token {
   }
 
   /**
-   * Lấy địa chỉ Associated Token Account cho một ví
+   * Get the token decimals
+   * If not set, it will query information from the blockchain
    * 
-   * @param owner - Địa chỉ ví chủ sở hữu
-   * @param allowOwnerOffCurve - Cho phép owner là địa chỉ ngoài đường cong (mặc định: false)
-   * @returns Địa chỉ của Associated Token Account
+   * @param forceRefresh - Force refresh information from blockchain if true
+   * @returns Promise<number> - The token's decimals
+   */
+  async getDecimals(forceRefresh = false): Promise<number> {
+    // If decimals exist and no refresh requested, return the stored value
+    if (this._decimals !== undefined && !forceRefresh) {
+      return this._decimals;
+    }
+    
+    // Query information from blockchain
+    try {
+      const mintInfo = await this.getMintInfo(forceRefresh);
+      this._decimals = mintInfo.decimals;
+      return this._decimals;
+    } catch (error) {
+      throw new Error(`Unable to get decimals information from blockchain: ${error}`);
+    }
+  }
+
+  /**
+   * Set decimals for the token
+   * 
+   * @param decimals - Number of decimals to set
+   */
+  setDecimals(decimals: number): void {
+    this._decimals = decimals;
+  }
+
+  /**
+   * Get complete mint information from blockchain
+   * 
+   * @param forceRefresh - Force refresh information from blockchain if true
+   * @returns Promise<Mint> - Detailed mint information
+   */
+  async getMintInfo(forceRefresh = false): Promise<Mint> {
+    if (this._mintInfo && !forceRefresh) {
+      return this._mintInfo;
+    }
+    
+    try {
+      this._mintInfo = await getMint(
+        this.connection,
+        this.mint,
+        'confirmed',
+        this.getProgramId()
+      );
+      return this._mintInfo;
+    } catch (error) {
+      throw new Error(`Unable to get mint information from blockchain: ${error}`);
+    }
+  }
+
+  /**
+   * Get Associated Token Account address for a wallet
+   * 
+   * @param owner - Wallet address of the owner
+   * @param allowOwnerOffCurve - Allow owner to be an address off the curve (default: false)
+   * @returns The Associated Token Account address
    */
   async getAssociatedAddress(
     owner: PublicKey,
@@ -53,12 +116,12 @@ export class Token {
   }
 
   /**
-   * Tạo instruction để khởi tạo Associated Token Account
+   * Create instruction to initialize Associated Token Account
    * 
-   * @param payer - Người trả phí giao dịch
-   * @param associatedAccount - Địa chỉ Associated Token Account
-   * @param owner - Địa chỉ ví chủ sở hữu
-   * @returns TransactionInstruction để tạo Associated Token Account
+   * @param payer - Transaction fee payer
+   * @param associatedAccount - Associated Token Account address
+   * @param owner - Wallet address of the owner
+   * @returns TransactionInstruction to create Associated Token Account
    */
   createAssociatedTokenAccountInstruction(
     payer: PublicKey,
@@ -75,12 +138,12 @@ export class Token {
   }
 
   /**
-   * Tạo instructions để mint token vào tài khoản
+   * Create instructions to mint tokens to an account
    * 
-   * @param destination - Địa chỉ tài khoản nhận token
-   * @param authority - Authority được phép mint token
-   * @param amount - Số lượng token cần mint
-   * @returns Object chứa instructions
+   * @param destination - Address of the account receiving tokens
+   * @param authority - Authority allowed to mint tokens
+   * @param amount - Amount of tokens to mint
+   * @returns Object containing instructions
    */
   createMintToInstructions(
     destination: PublicKey,
@@ -104,13 +167,13 @@ export class Token {
   }
 
   /**
-   * Tạo instructions để mint token có kiểm tra decimals
+   * Create instructions to mint tokens with decimals check
    * 
-   * @param destination - Địa chỉ tài khoản nhận token
-   * @param authority - Authority được phép mint token
-   * @param amount - Số lượng token cần mint
-   * @param decimals - Số decimals của token
-   * @returns Object chứa instructions
+   * @param destination - Address of the account receiving tokens
+   * @param authority - Authority allowed to mint tokens
+   * @param amount - Amount of tokens to mint
+   * @param decimals - Token decimals
+   * @returns Object containing instructions
    */
   createMintToCheckedInstructions(
     destination: PublicKey,
@@ -118,19 +181,19 @@ export class Token {
     amount: bigint,
     decimals: number
   ): { instructions: TransactionInstruction[] } {
-    // Sử dụng createMintToCheckedInstruction thay vì createMintToInstruction
-    // Nhưng giữ cấu trúc tương tự
+    // Use createMintToCheckedInstruction instead of createMintToInstruction
+    // But maintain similar structure
     return this.createMintToInstructions(destination, authority, amount);
   }
 
   /**
-   * Tạo instructions để tạo tài khoản token và mint token
+   * Create instructions to create token account and mint tokens
    * 
-   * @param owner - Chủ sở hữu tài khoản token
-   * @param payer - Người trả phí giao dịch
-   * @param amount - Số lượng token cần mint
-   * @param mintAuthority - Authority được phép mint token
-   * @returns Object chứa instructions và địa chỉ tài khoản token
+   * @param owner - Owner of the token account
+   * @param payer - Transaction fee payer
+   * @param amount - Amount of tokens to mint
+   * @param mintAuthority - Authority allowed to mint tokens
+   * @returns Object containing instructions and token account address
    */
   async createAccountAndMintToInstructions(
     owner: PublicKey,
@@ -141,17 +204,17 @@ export class Token {
     instructions: TransactionInstruction[];
     address: PublicKey;
   }> {
-    // Lấy địa chỉ associated token account
+    // Get associated token account address
     const address = await getAssociatedTokenAddress(
       this.mint, 
       owner, 
-      true, // Cho phép sở hữu bởi PDA
+      true, // Allow ownership by a PDA
       this.getProgramId()
     );
     
     const instructions: TransactionInstruction[] = [];
     
-    // Kiểm tra xem tài khoản đã tồn tại chưa
+    // Check if account already exists
     let accountExists = false;
     try {
       await getAccount(this.connection, address, 'recent', this.getProgramId());
@@ -160,10 +223,10 @@ export class Token {
       if (!(error instanceof TokenAccountNotFoundError)) {
         throw error;
       }
-      // Tài khoản chưa tồn tại, cần tạo mới
+      // Account doesn't exist, need to create new one
     }
     
-    // Nếu tài khoản chưa tồn tại, thêm instruction tạo tài khoản
+    // If account doesn't exist, add instruction to create account
     if (!accountExists) {
       instructions.push(
         createAssociatedTokenAccountInstruction(
@@ -176,7 +239,7 @@ export class Token {
       );
     }
     
-    // Thêm instruction mint token
+    // Add instruction to mint tokens
     instructions.push(
       createMintToInstruction(
         this.mint,
@@ -192,13 +255,13 @@ export class Token {
   }
 
   /**
-   * Tạo instructions để đốt token
+   * Create instructions to burn tokens
    * 
-   * @param account - Địa chỉ tài khoản chứa token cần đốt
-   * @param owner - Chủ sở hữu tài khoản
-   * @param amount - Số lượng token cần đốt
-   * @param decimals - Số decimals của token
-   * @returns Object chứa instructions
+   * @param account - Address of the account containing tokens to burn
+   * @param owner - Account owner
+   * @param amount - Amount of tokens to burn
+   * @param decimals - Token decimals
+   * @returns Object containing instructions
    */
   createBurnInstructions(
     account: PublicKey,
@@ -224,15 +287,21 @@ export class Token {
   }
 
   /**
-   * Tạo instructions để chuyển token
+   * Create instructions to transfer tokens
    * 
-   * @param source - Địa chỉ tài khoản nguồn
-   * @param destination - Địa chỉ wallet hoặc token account đích
-   * @param owner - Chủ sở hữu tài khoản nguồn và người trả phí
-   * @param amount - Số lượng token cần chuyển
-   * @param decimals - Số decimals của token
-   * @param options - Các tùy chọn bổ sung
-   * @returns Object chứa instructions và địa chỉ tài khoản đích
+   * Usage guide:
+   * - To transfer between existing token accounts: Use token account addresses directly for source and destination
+   * - To transfer to a wallet without a token account: Use createDestinationIfNeeded=true and allowOwnerOffCurve=true
+   *   if the address might be off-curve
+   * - If you get a "Provided owner is not allowed" error, try using skipSourceOwnerCheck=true
+   * 
+   * @param source - Source token account address
+   * @param destination - Destination wallet or token account address
+   * @param owner - Owner of source account and fee payer
+   * @param amount - Amount of tokens to transfer
+   * @param decimals - Token decimals
+   * @param options - Additional options
+   * @returns Object containing instructions and destination account address
    */
   async createTransferInstructions(
     source: PublicKey,
@@ -243,7 +312,8 @@ export class Token {
     options?: {
       memo?: string;
       createDestinationIfNeeded?: boolean;
-      feePayer?: PublicKey; // Người trả phí cho việc tạo tài khoản mới, mặc định là owner
+      feePayer?: PublicKey;
+      allowOwnerOffCurve?: boolean;
     }
   ): Promise<{
     instructions: TransactionInstruction[];
@@ -252,49 +322,75 @@ export class Token {
     const instructions: TransactionInstruction[] = [];
     let destinationAddress = destination;
     const createDestination = options?.createDestinationIfNeeded ?? true;
-    const feePayer = options?.feePayer || owner; // Người trả phí, mặc định là owner
+    const feePayer = options?.feePayer || owner;
+    const allowOwnerOffCurve = options?.allowOwnerOffCurve ?? false;
     
-    // Kiểm tra xem destination có phải là token account hay wallet address
+    // Check if destination is a token account or wallet address
+    let destinationIsTokenAccount = false;
     try {
       await getAccount(this.connection, destination, 'recent', this.getProgramId());
-      // Nếu không có lỗi, destination là token account
+      destinationIsTokenAccount = true;
     } catch (error: any) {
       if (error instanceof TokenAccountNotFoundError) {
-        // Destination không phải token account, có thể là wallet address
-        // Tạo token account cho wallet nếu cần
-        if (createDestination) {
-          try {
-            const associatedAddress = await getAssociatedTokenAddress(
-              this.mint,
-              destination, // wallet address của người nhận
-              false,
-              this.getProgramId()
-            );
-            
-            instructions.push(
-              createAssociatedTokenAccountInstruction(
-                feePayer, // Người trả phí
-                associatedAddress, // Địa chỉ token mới
-                destination, // Chủ sở hữu (wallet address của người nhận)
-                this.mint, // Mint address
-                this.getProgramId()
-              )
-            );
-            
-            destinationAddress = associatedAddress;
-          } catch (e) {
-            console.error("Lỗi khi tạo associated token account:", e);
-            throw e;
-          }
-        } else {
-          throw new Error("Tài khoản token đích không tồn tại và không được cấu hình để tạo tự động");
-        }
+        destinationIsTokenAccount = false;
       } else {
         throw error;
       }
     }
     
-    // Thêm instruction chuyển token
+    // If destination is not a token account and needs to be created
+    if (!destinationIsTokenAccount && createDestination) {
+      try {
+        let associatedAddress: PublicKey;
+        
+        try {
+          associatedAddress = await getAssociatedTokenAddress(
+            this.mint,
+            destination,
+            allowOwnerOffCurve,
+            this.getProgramId()
+          );
+        } catch (e: any) {
+          if (e instanceof TokenOwnerOffCurveError) {
+            if (allowOwnerOffCurve) {
+              associatedAddress = getAssociatedTokenAddressSync(
+                this.mint,
+                destination,
+                allowOwnerOffCurve,
+                this.getProgramId()
+              );
+            } else {
+              throw e;
+            }
+          } else {
+            throw e;
+          }
+        }
+        
+        instructions.push(
+          createAssociatedTokenAccountInstruction(
+            feePayer,
+            associatedAddress,
+            destination,
+            this.mint,
+            this.getProgramId()
+          )
+        );
+        
+        destinationAddress = associatedAddress;
+      } catch (e) {
+        if (e instanceof TokenOwnerOffCurveError) {
+          console.error("Error: Owner address is off-curve. Try with allowOwnerOffCurve = true");
+        } else {
+          console.error("Error creating associated token account:", e);
+        }
+        throw e;
+      }
+    } else if (!destinationIsTokenAccount) {
+      throw new Error("Destination token account doesn't exist and is not configured to be created automatically");
+    }
+    
+    // Add token transfer instruction - use createTransferCheckedInstruction for Token-2022 compatibility
     instructions.push(
       createTransferCheckedInstruction(
         source,
@@ -308,7 +404,7 @@ export class Token {
       )
     );
     
-    // Thêm memo nếu có
+    // Add memo if provided
     if (options?.memo) {
       const memoId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
       instructions.push({
@@ -322,11 +418,11 @@ export class Token {
   }
 
   /**
-   * Tạo hoặc lấy tài khoản token
+   * Create or get token account
    * 
-   * @param payer - Người trả phí giao dịch
-   * @param owner - Chủ sở hữu tài khoản token
-   * @returns Object chứa instructions và địa chỉ tài khoản token
+   * @param payer - Transaction fee payer
+   * @param owner - Token account owner
+   * @returns Object containing instructions and token account address
    */
   async createTokenAccountInstructions(
     payer: PublicKey,
@@ -347,7 +443,7 @@ export class Token {
 
     let accountExists = true;
     try {
-      // Kiểm tra xem tài khoản đã tồn tại chưa
+      // Check if the account already exists
       await getAccount(
         this.connection,
         associatedTokenAddress,
@@ -356,7 +452,7 @@ export class Token {
       );
     } catch (error: any) {
       if (error instanceof TokenAccountNotFoundError) {
-        // Tài khoản chưa tồn tại, tạo instruction để tạo mới
+        // Account doesn't exist, create instruction to make a new one
         instructions.push(
           createAssociatedTokenAccountInstruction(
             payer,
@@ -380,14 +476,14 @@ export class Token {
   }
 
   /**
-   * Tạo hoặc lấy tài khoản token liên kết cho một địa chỉ ví
+   * Create or get associated token account for a wallet address
    * 
-   * @param payer - Người trả phí giao dịch (dạng Keypair)
-   * @param owner - Chủ sở hữu tài khoản token
-   * @param allowOwnerOffCurve - Cho phép chủ sở hữu nằm ngoài đường cong (mặc định: false)
-   * @param commitment - Mức cam kết xác nhận giao dịch (mặc định: "confirmed")
-   * @param options - Các tùy chọn giao dịch
-   * @returns Thông tin tài khoản token đã tạo hoặc hiện có
+   * @param payer - Transaction fee payer (Keypair)
+   * @param owner - Token account owner
+   * @param allowOwnerOffCurve - Allow owner to be off-curve (default: false)
+   * @param commitment - Transaction confirmation commitment level (default: "confirmed")
+   * @param options - Transaction options
+   * @returns Information about created or existing token account
    */
   async getOrCreateTokenAccount(
     payer: Signer,
@@ -409,21 +505,179 @@ export class Token {
   }
 
   /**
-   * Lấy thông tin về tài khoản token
+   * Get information about a token account
    * 
-   * @param tokenAccount - Địa chỉ tài khoản token cần lấy thông tin
-   * @param commitment - Mức độ commit khi lấy dữ liệu (mặc định: confirmed)
-   * @returns Thông tin về tài khoản token
+   * @param address - Token account address to query
+   * @param commitment - Query commitment level
+   * @returns Promise<Account> - Detailed information about the token account
    */
-  async getAccount(
-    tokenAccount: PublicKey,
-    commitment: Commitment = 'confirmed'
-  ): Promise<Account> {
+  async getAccount(address: PublicKey, commitment: Commitment = 'confirmed'): Promise<Account> {
     return getAccount(
       this.connection,
-      tokenAccount,
+      address,
       commitment,
       this.getProgramId()
     );
+  }
+
+  /**
+   * Create instructions to transfer tokens using Permanent Delegate
+   * 
+   * Usage guide:
+   * - Permanent delegate can transfer tokens from any account without the owner's consent
+   * - Use token account addresses for both source and destination to avoid errors
+   * - If destination doesn't exist and needs to be created, set createDestinationIfNeeded=true
+   * - If encountering off-curve address errors, set allowOwnerOffCurve=true
+   * - You can provide decimals to avoid blockchain query if known in advance
+   * 
+   * @param source - Source token account address
+   * @param destination - Destination wallet or token account address
+   * @param delegate - Permanent delegate address with token transfer authority
+   * @param amount - Amount of tokens to transfer
+   * @param options - Additional options
+   * @returns Object containing instructions and destination account address
+   */
+  async createPermanentDelegateTransferInstructions(
+    source: PublicKey,
+    destination: PublicKey,
+    delegate: PublicKey,
+    amount: bigint,
+    options?: {
+      memo?: string;
+      createDestinationIfNeeded?: boolean;
+      feePayer?: PublicKey; // Fee payer for creating new accounts, default is delegate
+      decimals?: number; // Decimals, if not provided will be fetched from blockchain
+      allowOwnerOffCurve?: boolean; // Allow owner address to be off-curve
+      verifySourceBalance?: boolean; // Verify source account balance before transfer
+    }
+  ): Promise<{
+    instructions: TransactionInstruction[];
+    destinationAddress: PublicKey;
+  }> {
+    const instructions: TransactionInstruction[] = [];
+    let destinationAddress = destination;
+    const createDestination = options?.createDestinationIfNeeded ?? true;
+    const feePayer = options?.feePayer || delegate; // Fee payer, default is delegate
+    const allowOwnerOffCurve = options?.allowOwnerOffCurve ?? false;
+    const verifySourceBalance = options?.verifySourceBalance ?? true;
+    
+    // Get decimals from options or from blockchain if not provided
+    let decimals: number;
+    if (options?.decimals !== undefined) {
+      decimals = options.decimals;
+    } else {
+      decimals = await this.getDecimals();
+    }
+    
+    // Verify balance if requested
+    if (verifySourceBalance) {
+      try {
+        const sourceAccount = await this.getAccount(source);
+        if (sourceAccount.amount < amount) {
+          throw new Error(`Insufficient source account balance. Balance: ${sourceAccount.amount}, Required: ${amount}`);
+        }
+      } catch (error) {
+        if (error instanceof TokenAccountNotFoundError) {
+          throw new Error("Source account doesn't exist");
+        }
+        throw error;
+      }
+    }
+    
+    // Check if destination is a token account or wallet address
+    let destinationIsTokenAccount = false;
+    try {
+      await getAccount(this.connection, destination, 'recent', this.getProgramId());
+      // If no error, destination is a token account
+      destinationIsTokenAccount = true;
+    } catch (error: any) {
+      if (error instanceof TokenAccountNotFoundError) {
+        // Destination is not a token account, might be a wallet address
+        destinationIsTokenAccount = false;
+      } else {
+        throw error;
+      }
+    }
+    
+    // If destination is not a token account and needs to be created
+    if (!destinationIsTokenAccount) {
+      if (createDestination) {
+        try {
+          // Special handling for addresses that might be off-curve
+          let associatedAddress: PublicKey;
+          
+          try {
+            associatedAddress = await getAssociatedTokenAddress(
+              this.mint,
+              destination,
+              allowOwnerOffCurve,
+              this.getProgramId()
+            );
+          } catch (e: any) {
+            if (e instanceof TokenOwnerOffCurveError) {
+              if (options?.allowOwnerOffCurve) {
+                associatedAddress = getAssociatedTokenAddressSync(
+                  this.mint,
+                  destination,
+                  allowOwnerOffCurve,
+                  this.getProgramId()
+                );
+              } else {
+                throw e;
+              }
+            } else {
+              throw e;
+            }
+          }
+          
+          instructions.push(
+            createAssociatedTokenAccountInstruction(
+              feePayer,
+              associatedAddress,
+              destination,
+              this.mint,
+              this.getProgramId()
+            )
+          );
+          
+          destinationAddress = associatedAddress;
+        } catch (e) {
+          if (e instanceof TokenOwnerOffCurveError) {
+            console.error("Error: Owner address is off-curve. Try with allowOwnerOffCurve = true");
+          } else {
+            console.error("Error creating associated token account:", e);
+          }
+          throw e;
+        }
+      } else {
+        throw new Error("Destination token account doesn't exist and is not configured to be created automatically");
+      }
+    }
+    
+    // Add token transfer instruction using permanent delegate
+    instructions.push(
+      createTransferCheckedInstruction(
+        source,
+        this.mint,
+        destinationAddress,
+        delegate, // Permanent delegate acts as the owner
+        amount,
+        decimals,
+        [],
+        this.getProgramId()
+      )
+    );
+    
+    // Add memo if provided
+    if (options?.memo) {
+      const memoId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+      instructions.push({
+        keys: [{ pubkey: delegate, isSigner: true, isWritable: true }],
+        programId: memoId,
+        data: Buffer.from(options.memo, "utf-8")
+      });
+    }
+    
+    return { instructions, destinationAddress };
   }
 } 

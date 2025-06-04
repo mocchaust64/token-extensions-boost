@@ -23,8 +23,11 @@ Non-transferable tokens are useful for:
 # Install dependencies
 npm install
 
+# Build the SDK
+npm run build
+
 # Run the example
-npx ts-node create-non-transferable-token.ts
+npx ts-node examples/non-transferable/create-non-transferable-token.ts
 ```
 
 ## Code Explanation
@@ -39,11 +42,18 @@ The `create-non-transferable-token.ts` file demonstrates the basic process:
 
 ```typescript
 // Create a new token with non-transferable extension
-const { mint } = await new TokenBuilder(connection)
-  .setTokenInfo(9, payer.publicKey)
-  .addNonTransferable()
-  .createToken(payer);
+const tokenBuilder = new TokenBuilder(connection)
+  .setTokenInfo(6, payer.publicKey)
+  .addNonTransferable();
 
+// Get instructions to create token
+const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+
+// Create and send transaction
+const transaction = new Transaction().add(...instructions);
+await sendAndConfirmTransaction(connection, transaction, [payer, ...signers]);
+
+// Create a NonTransferableToken instance
 const nonTransferableToken = new NonTransferableToken(connection, mint);
 
 // Mint tokens to an account
@@ -54,4 +64,5 @@ const nonTransferableToken = new NonTransferableToken(connection, mint);
 
 - Once a token is received in an account, it cannot be transferred to any other account
 - Non-transferable tokens are not compatible with certain other extensions like TransferFee and TransferHook
-- The non-transferable property is enforced at the protocol level and cannot be bypassed 
+- The non-transferable property is enforced at the protocol level and cannot be bypassed
+- Non-transferable tokens can be combined with extensions like TokenMetadata to create certificates or badges 

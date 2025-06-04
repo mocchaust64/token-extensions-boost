@@ -262,9 +262,9 @@ export class TokenMetadataToken extends Token {
               { commitment: 'confirmed' }
             );
             
-            console.log(`  ✓ Thêm trường "${key}" thành công: ${addFieldSignature.substring(0, 16)}...`);
+            console.log(`  ✓ Added field "${key}" successfully: ${addFieldSignature.substring(0, 16)}...`);
           } catch (err) {
-            console.warn(`  ⚠ Không thể thêm trường "${key}": ${err instanceof Error ? err.message : String(err)}`);
+            console.warn(`  ⚠ Unable to add field "${key}": ${err instanceof Error ? err.message : String(err)}`);
           }
         }
       }
@@ -551,24 +551,26 @@ export class TokenMetadataToken extends Token {
   }
 
   /**
-   * Tính toán và cấp phát không gian cho metadata
-   * @param connection Kết nối Solana
-   * @param payer PublicKey của người trả phí
-   * @param fieldName Tên trường metadata
-   * @param fieldValue Giá trị trường metadata
-   * @returns Instruction để cấp phát thêm không gian (hoặc null nếu không cần)
+   * Calculate and allocate space for metadata
+   * @param connection - Solana connection
+   * @param mint - Mint address
+   * @param fieldName - Name of the field to add or update
+   * @param fieldValue - Value to set for the field
+   * @param payer - Payer public key
+   * @returns Instruction to allocate additional space (or null if not needed)
    */
-  async calculateAndAllocateStorage(
+  private async calculateAndAllocateSpaceForField(
     connection: Connection,
-    payer: PublicKey,
-    fieldName: string, 
-    fieldValue: string
+    mint: PublicKey,
+    fieldName: string,
+    fieldValue: string,
+    payer: PublicKey
   ): Promise<TransactionInstruction | null> {
     try {
       // Lấy metadata hiện tại để so sánh kích thước
       const currentMetadata = await getTokenMetadata(
         connection,
-        this.mint,
+        mint,
         "confirmed",
         TOKEN_2022_PROGRAM_ID
       );
@@ -588,8 +590,8 @@ export class TokenMetadataToken extends Token {
       
       // 1. So sánh kích thước: Chỉ cấp phát nếu giá trị mới dài hơn giá trị cũ
       if (fieldValue.length <= currentFieldValue.length) {
-        console.log(`🔍 Không cần cấp phát không gian cho trường "${fieldName}": Giá trị mới (${fieldValue.length} bytes) <= giá trị cũ (${currentFieldValue.length} bytes)`);
-        return null; // Không cần cấp phát nếu giá trị mới ngắn hơn hoặc bằng
+        console.log(`🔍 No need to allocate space for field "${fieldName}": New value (${fieldValue.length} bytes) <= old value (${currentFieldValue.length} bytes)`);
+        return null; // No allocation needed if new value is shorter or equal
       }
       
       // 2. Tính toán không gian thực sự cần thêm (chỉ phần tăng thêm)
@@ -603,49 +605,50 @@ export class TokenMetadataToken extends Token {
       const rentPerByte = await connection.getMinimumBalanceForRentExemption(1);
       const requiredLamports = totalAdditionalSize * rentPerByte;
       
-      console.log(`🔄 Cấp phát thêm ${totalAdditionalSize} bytes cho trường "${fieldName}" (${requiredLamports / LAMPORTS_PER_SOL} SOL)`);
+      console.log(`🔄 Allocating additional ${totalAdditionalSize} bytes for field "${fieldName}" (${requiredLamports / LAMPORTS_PER_SOL} SOL)`);
       
       // 4. Tạo instruction chuyển SOL cho không gian bổ sung
       return SystemProgram.transfer({
         fromPubkey: payer,
-        toPubkey: this.mint,
+        toPubkey: mint,
         lamports: requiredLamports,
       });
     } catch (error) {
-      console.error(`❌ Lỗi khi tính toán không gian cho trường "${fieldName}":`, error);
+      console.error(`❌ Error calculating space for field "${fieldName}":`, error);
       
-      // Nếu có lỗi khi tính toán, sử dụng phương pháp đơn giản
-      // Tính toán không gian cần thiết cho trường mới (phương pháp dự phòng)
-      const estimatedSize = fieldName.length + fieldValue.length + 16; // Tăng thêm padding
+      // Calculate space needed for new field (fallback method)
+      const estimatedSize = fieldName.length + fieldValue.length + 16; // Add padding
       const rentPerByte = await connection.getMinimumBalanceForRentExemption(1);
       
-      console.log(`⚠️ Sử dụng phương pháp dự phòng: cấp phát ${estimatedSize} bytes (${(estimatedSize * rentPerByte) / LAMPORTS_PER_SOL} SOL)`);
+      console.log(`⚠️ Using fallback method: allocating ${estimatedSize} bytes (${(estimatedSize * rentPerByte) / LAMPORTS_PER_SOL} SOL)`);
       
       return SystemProgram.transfer({
         fromPubkey: payer,
-        toPubkey: this.mint,
+        toPubkey: mint,
         lamports: estimatedSize * rentPerByte,
       });
     }
   }
 
   /**
-   * Tính toán và cấp phát không gian hiệu quả cho nhiều trường metadata
-   * @param connection Kết nối Solana
-   * @param payer PublicKey của người trả phí
-   * @param fields Các trường metadata cần cập nhật
-   * @returns Instruction để cấp phát thêm không gian (hoặc null nếu không cần)
+   * Calculate and allocate space efficiently for multiple metadata fields
+   * @param connection - Solana connection
+   * @param mint - Mint address
+   * @param fields - Object with field names and values
+   * @param payer - Payer public key
+   * @returns Instruction to allocate additional space (or null if not needed)
    */
-  async calculateBatchStorageInstruction(
+  private async calculateAndAllocateSpaceForMultipleFields(
     connection: Connection,
-    payer: PublicKey,
-    fields: Record<string, string>
+    mint: PublicKey,
+    fields: Record<string, string>,
+    payer: PublicKey
   ): Promise<TransactionInstruction | null> {
     try {
       // 1. Kiểm tra metadata hiện tại để xác định trường nào mới hoặc cần thêm dung lượng
       const currentMetadata = await getTokenMetadata(
         connection,
-        this.mint,
+        mint,
         "confirmed",
         TOKEN_2022_PROGRAM_ID
       );
@@ -699,12 +702,12 @@ export class TokenMetadataToken extends Token {
       
       // 4. Nếu không cần thêm không gian, trả về null
       if (additionalSize <= 0) {
-        console.log(`✅ Không cần cấp phát thêm không gian cho ${Object.keys(fields).length} trường`);
+        console.log(`✅ No additional space allocation needed for ${Object.keys(fields).length} fields`);
         return null;
       }
       
       // 5. Thêm padding để đảm bảo đủ không gian cho metadata
-      const paddingSize = Math.min(32, additionalSize * 0.1); // Padding 10% nhưng không quá 32 bytes
+      const paddingSize = Math.min(32, additionalSize * 0.1); // Padding 10% but not more than 32 bytes
       additionalSize += paddingSize;
       
       // 6. Lấy chi phí rent exemption cho mỗi byte
@@ -712,16 +715,16 @@ export class TokenMetadataToken extends Token {
       const requiredLamports = additionalSize * rentPerByte;
       
       // 7. Log thông tin chi phí
-      console.log(`🔄 Cấp phát thêm ${additionalSize} bytes (${(requiredLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL) cho ${Object.keys(fieldChanges).length} trường`);
+      console.log(`🔄 Allocating additional ${additionalSize} bytes (${(requiredLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL) for ${Object.keys(fieldChanges).length} fields`);
       
       // 8. Tạo instruction chuyển SOL cho không gian bổ sung
       return SystemProgram.transfer({
         fromPubkey: payer,
-        toPubkey: this.mint,
+        toPubkey: mint,
         lamports: requiredLamports,
       });
-    } catch (error) {
-      console.error("❌ Lỗi tính toán không gian cho batch metadata:", error);
+    } catch {
+      // Do nothing
       
       // Phương pháp dự phòng: tính toán đơn giản
       let totalSize = 0;
@@ -738,11 +741,11 @@ export class TokenMetadataToken extends Token {
       
       console.log(`⚠️ Sử dụng phương pháp dự phòng: cấp phát cho ${totalSize} bytes × 25% = ${(backupLamports / LAMPORTS_PER_SOL).toFixed(6)} SOL`);
       
-      return SystemProgram.transfer({
-        fromPubkey: payer,
-        toPubkey: this.mint,
+    return SystemProgram.transfer({
+      fromPubkey: payer,
+      toPubkey: mint,
         lamports: backupLamports,
-      });
+    });
     }
   }
 
@@ -778,8 +781,8 @@ export class TokenMetadataToken extends Token {
     
     // 2. Thêm instruction cấp phát không gian nếu cần
     if (allocateStorage) {
-      const storageIx = await this.calculateAndAllocateStorage(
-        connection, wallet.publicKey, fieldName, fieldValue
+      const storageIx = await this.calculateAndAllocateSpaceForField(
+        connection, this.mint, fieldName, fieldValue, wallet.publicKey
       );
       if (storageIx) {
         transaction.add(storageIx);
@@ -853,8 +856,8 @@ export class TokenMetadataToken extends Token {
       // Thêm instruction cấp phát không gian nếu cần - PHƯƠNG PHÁP 1 & 2
       if (allocateStorage) {
         // Sử dụng phương pháp tối ưu tính toán không gian cho tất cả trường trong batch
-        const storageIx = await this.calculateBatchStorageInstruction(
-          connection, wallet.publicKey, batchFields
+        const storageIx = await this.calculateAndAllocateSpaceForMultipleFields(
+          connection, this.mint, batchFields, wallet.publicKey
         );
         if (storageIx) {
           transaction.add(storageIx);

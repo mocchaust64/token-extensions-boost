@@ -1,95 +1,145 @@
-import { clusterApiUrl, Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { TransferFeeToken } from "solana-token-extension-boost";
+import { clusterApiUrl, Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
+import { TokenBuilder, TransferFeeToken } from "../../src";
 import * as fs from "fs";
 import * as path from "path";
 import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 
 async function main() {
+  // Connect to Solana devnet
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-  const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
+  
+  // Read wallet from local file
+  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
   const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf8"});
   const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
   const payer = Keypair.fromSecretKey(secretKey);
   
+  console.log("Wallet address:", payer.publicKey.toString());
   
-  const mintAuthority = payer;
-  const transferFeeConfigAuthority = payer;
-  const withdrawWithheldAuthority = payer;
-  
+  // 1. Create token with 1% transfer fee
   console.log("\n1. Creating token with 1% transfer fee");
   
-  const token = await TransferFeeToken.create(
+  const tokenBuilder = new TokenBuilder(connection)
+    .setTokenInfo(
+      6, // decimals
+      payer.publicKey // mint authority
+    )
+    .addTokenMetadata(
+      "Fee Token",
+      "FEE",
+      "https://example.com/token-metadata.json",
+      { "description": "A token with 1% transfer fee" }
+    )
+    .addTransferFee(
+      100, // 1% (100 basis points)
+      BigInt(10_000_000), // 10 tokens max fee (with 6 decimals)
+      payer.publicKey, // transferFeeConfigAuthority
+      payer.publicKey  // withdrawWithheldAuthority
+    );
+
+  // Get instructions to create token
+  const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+  
+  // Create and send transaction
+  const transaction = new Transaction().add(...instructions);
+  const createTokenSignature = await sendAndConfirmTransaction(
     connection,
-    payer,
-    {
-      decimals: 9,
-      mintAuthority: mintAuthority.publicKey,
-      transferFeeConfig: {
-        feeBasisPoints: 100,
-        maxFee: BigInt(10_000_000_000),
-        transferFeeConfigAuthority,
-        withdrawWithheldAuthority,
-      },
-    }
+    transaction,
+    [payer, ...signers]
   );
 
-  const mintAddress = token.getMint();
-  console.log(`Token created: ${mintAddress.toString()}`);
+  console.log(`Token created: ${mint.toString()}`);
+  console.log(`Transaction: https://explorer.solana.com/tx/${createTokenSignature}?cluster=devnet`);
   
+  // Create TransferFeeToken instance
+  const transferFeeToken = new TransferFeeToken(connection, mint, {
+        feeBasisPoints: 100,
+    maxFee: BigInt(10_000_000),
+    transferFeeConfigAuthority: payer.publicKey,
+    withdrawWithheldAuthority: payer.publicKey
+  });
+  
+  // 2. Minting tokens to owner
   console.log("\n2. Minting tokens to owner");
   
-  const mintAmount = BigInt(1000_000_000_000);
-  const ownerTokenAccount = await token.createAccountAndMintTo(
-    payer.publicKey,
-    payer,
-    mintAmount,
-    payer
+  const mintAmount = BigInt(1000_000_000); // 1000 tokens with 6 decimals
+  
+  // Create instructions for minting tokens
+  const { instructions: mintInstructions, address: ownerTokenAddress } = 
+    await transferFeeToken.createAccountAndMintToInstructions(
+      payer.publicKey, // fee payer
+      payer.publicKey, // token account owner
+      mintAmount,      // amount to mint
+      payer.publicKey  // mint authority
+    );
+  
+  // Create and send transaction
+  const mintTransaction = new Transaction().add(...mintInstructions);
+  const mintSignature = await sendAndConfirmTransaction(
+    connection,
+    mintTransaction,
+    [payer]
   );
   
-  console.log(`Minted ${Number(mintAmount) / 1e9} tokens to ${ownerTokenAccount.toString()}`);
+  console.log(`Minted ${Number(mintAmount) / 1e6} tokens to ${ownerTokenAddress.toString()}`);
+  console.log(`Transaction: https://explorer.solana.com/tx/${mintSignature}?cluster=devnet`);
   
+  // Create recipients
   const recipients = [
     Keypair.generate(),
     Keypair.generate(),
     Keypair.generate()
   ];
   
+  // 3. Creating token accounts for recipients
+  console.log("\n3. Creating token accounts for recipients");
+  
   const recipientAccounts: { address: PublicKey }[] = [];
   for (const recipient of recipients) {
-    console.log(`\nRecipient: ${recipient.publicKey.toString()}`);
+    console.log(`Recipient: ${recipient.publicKey.toString()}`);
     
     const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       payer,
-      mintAddress,
+      mint,
       recipient.publicKey,
       false,
       "confirmed",
       { skipPreflight: true },
-      token.getProgramId()
+      transferFeeToken.getProgramId()
     );
     
     recipientAccounts.push(recipientTokenAccount);
     console.log(`Recipient token account: ${recipientTokenAccount.address.toString()}`);
   }
   
-  console.log("\n3. Transferring tokens with 1% fee to multiple recipients");
+  // 4. Transferring tokens with 1% fee to multiple recipients
+  console.log("\n4. Transferring tokens with 1% fee to multiple recipients");
   
   const transferredAccounts: PublicKey[] = [];
   
   for (let i = 0; i < recipientAccounts.length; i++) {
-    const transferAmount = BigInt((100_000_000_000 * (i + 1)));
+    const transferAmount = BigInt((100_000_000 * (i + 1))); // 100, 200, 300 tokens
     
-    const expectedFee = token.calculateFee(transferAmount);
-    console.log(`Transfer ${i+1}: ${Number(transferAmount) / 1e9} tokens with fee: ${Number(expectedFee) / 1e9} tokens`);
+    const expectedFee = transferFeeToken.calculateFee(transferAmount);
+    console.log(`Transfer ${i+1}: ${Number(transferAmount) / 1e6} tokens with fee: ${Number(expectedFee) / 1e6} tokens`);
     
     try {
-      const transferSignature = await token.transfer(
-        ownerTokenAccount.address,
+      // Create transfer instruction
+      const transferInstruction = transferFeeToken.createTransferInstruction(
+        ownerTokenAddress,
         recipientAccounts[i].address,
-        payer,
+        payer.publicKey,
         transferAmount,
-        9
+        6
+      );
+      
+      // Create and send transaction
+      const transferTransaction = new Transaction().add(transferInstruction);
+      const transferSignature = await sendAndConfirmTransaction(
+        connection,
+        transferTransaction,
+        [payer]
       );
       
       console.log(`Transaction: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
@@ -99,10 +149,11 @@ async function main() {
     }
   }
   
-  console.log("\n4. Finding accounts with withheld fees");
+  // 5. Finding accounts with withheld fees
+  console.log("\n5. Finding accounts with withheld fees");
   
   try {
-    const accountsWithFees = await token.findAccountsWithWithheldFees();
+    const accountsWithFees = await transferFeeToken.findAccountsWithWithheldFees();
     
     console.log(`Found ${accountsWithFees.length} accounts with withheld fees:`);
     for (const account of accountsWithFees) {
@@ -110,30 +161,47 @@ async function main() {
     }
     
     if (accountsWithFees.length > 0) {
-      console.log("\n5. Harvesting fees from accounts to mint");
+      // 6. Harvesting fees from accounts to mint
+      console.log("\n6. Harvesting fees from accounts to mint");
       
-      const harvestSignature = await token.harvestWithheldTokensToMint(
+      const harvestInstruction = transferFeeToken.createHarvestWithheldTokensToMintInstruction(
         accountsWithFees
+      );
+      
+      const harvestTransaction = new Transaction().add(harvestInstruction);
+      const harvestSignature = await sendAndConfirmTransaction(
+        connection,
+        harvestTransaction,
+        [payer]
       );
       
       console.log(`Fees harvested to mint`);
       console.log(`Transaction: https://explorer.solana.com/tx/${harvestSignature}?cluster=devnet`);
       
-      console.log("\n6. Withdrawing fees from mint");
+      // 7. Withdrawing fees from mint
+      console.log("\n7. Withdrawing fees from mint");
       
       const feeRecipientTokenAccount = await getOrCreateAssociatedTokenAccount(
         connection,
         payer,
-        mintAddress,
+        mint,
         payer.publicKey,
         false,
         "confirmed",
         { skipPreflight: true },
-        token.getProgramId()
+        transferFeeToken.getProgramId()
       );
       
-      const withdrawSignature = await token.withdrawFeesFromMint(
-        feeRecipientTokenAccount.address
+      const withdrawInstruction = transferFeeToken.createWithdrawFeesFromMintInstruction(
+        feeRecipientTokenAccount.address,
+        payer.publicKey
+      );
+      
+      const withdrawTransaction = new Transaction().add(withdrawInstruction);
+      const withdrawSignature = await sendAndConfirmTransaction(
+        connection,
+        withdrawTransaction,
+        [payer]
       );
       
       console.log(`Fees withdrawn to ${feeRecipientTokenAccount.address.toString()}`);
@@ -143,19 +211,16 @@ async function main() {
     console.error(`Failed to process fees: ${error.message}`);
   }
   
+  // Summary
   console.log("\n===== SUMMARY =====");
-  console.log(`- Token Address: ${mintAddress.toString()}`);
-  console.log(`- Owner Token Account: ${ownerTokenAccount.toString()}`);
+  console.log(`- Token Address: ${mint.toString()}`);
+  console.log(`- Owner Token Account: ${ownerTokenAddress.toString()}`);
   console.log(`- View details on Solana Explorer (devnet):`);
-  console.log(`  https://explorer.solana.com/address/${mintAddress.toString()}?cluster=devnet`);
-  
-  const balance = await connection.getBalance(payer.publicKey);
-  const finalBalance = await connection.getBalance(payer.publicKey);
-  console.log(`\nFinal balance: ${finalBalance / 1e9} SOL (used ${(balance - finalBalance) / 1e9} SOL)`);
+  console.log(`  https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => console.log("Success"))
   .catch(error => {
     console.error("Error:", error);
     process.exit(1);

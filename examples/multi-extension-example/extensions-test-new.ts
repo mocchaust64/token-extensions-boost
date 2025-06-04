@@ -6,94 +6,97 @@ import { AccountState, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import { Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 
 /**
- * Ví dụ tạo token với các extension mới:
- * - Default Account State
- * - Mint Close Authority
+ * Example of creating a token with specialized extensions:
+ * - DefaultAccountState
+ * - MintCloseAuthority
+ * - TokenMetadata
  */
 async function main() {
   try {
-    // Kết nối đến Solana devnet
+    // SETUP: Connect to Solana and load keypair
+    console.log("Connecting to Solana devnet...");
     const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
     
-    // Đọc keypair từ file
-    console.log('Đọc keypair từ file...');
     const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
     const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf-8"});
     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
     const payer = Keypair.fromSecretKey(secretKey);
-    console.log(`Địa chỉ ví: ${payer.publicKey.toBase58()}`);
+    console.log(`Wallet address: ${payer.publicKey.toBase58()}`);
     
-    console.log('Tạo token với các extension mới...');
-    
-    // Tạo token với các extension mới
+    // TOKEN CREATION: Build token with extensions
+    console.log("Creating token with specialized extensions...");
     const tokenBuilder = new TokenBuilder(connection)
       .setTokenInfo(
-        9, // decimals
+        6, // 6 decimals for compatibility (changed from 9)
         payer.publicKey, // mint authority
         payer.publicKey // freeze authority
       )
-      // Thêm metadata
-      .addMetadata(
+      // Add TokenMetadata
+      .addTokenMetadata(
         "Extended Token",
         "EXT",
         "https://example.com/metadata.json",
         { "creator": "Solana SDK Extension Example" }
       )
-      // Thêm DefaultAccountState - thiết lập trạng thái mặc định cho tài khoản token
+      // Add DefaultAccountState - set default state for token accounts
       .addDefaultAccountState(AccountState.Initialized)
       
-      // Thêm MintCloseAuthority - cho phép đóng mint account sau này
+      // Add MintCloseAuthority - allows closing the mint account later
       .addMintCloseAuthority(payer.publicKey);
     
-    // Tạo token sử dụng API mới
-    console.log('Đang tạo token...');
-    
-    // Lấy instructions thay vì tạo token trực tiếp
+    // Get token creation instructions
+    console.log('Creating token...');
     const { instructions, signers, mint } = 
       await tokenBuilder.createTokenInstructions(payer.publicKey);
     
-    // Tạo và ký transaction
-    const createTokenTx = new Transaction().add(...instructions);
+    // Create and configure transaction
+    const transaction = new Transaction().add(...instructions);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    createTokenTx.recentBlockhash = blockhash;
-    createTokenTx.lastValidBlockHeight = lastValidBlockHeight;
-    createTokenTx.feePayer = payer.publicKey;
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    transaction.feePayer = payer.publicKey;
     
-    // Ký và gửi transaction
-    createTokenTx.sign(...signers, payer);
+    // Sign and send transaction
+    if (signers.length > 0) {
+      transaction.partialSign(...signers);
+    }
+    transaction.partialSign(payer);
+    
     const transactionSignature = await connection.sendRawTransaction(
-      createTokenTx.serialize(),
+      transaction.serialize(),
       { skipPreflight: false }
     );
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature: transactionSignature,
       blockhash,
       lastValidBlockHeight
     });
     
-    console.log(`Token tạo thành công!`);
-    console.log(`Địa chỉ mint: ${mint.toBase58()}`);
-    console.log(`Chữ ký giao dịch: ${transactionSignature}`);
-    console.log(`Link Solana Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+    // VERIFICATION: Verify the token has been created successfully
+    console.log(`Token created successfully!`);
+    console.log(`Mint address: ${mint.toBase58()}`);
+    console.log(`Transaction signature: ${transactionSignature}`);
+    console.log(`Solana Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
     
-    // Thông tin về các extension
-    console.log('\nThông tin về token:');
-    console.log(`- Token có DefaultAccountState: Mọi tài khoản token mới sẽ ở trạng thái Initialized`);
-    console.log(`- Token có MintCloseAuthority: ${payer.publicKey.toBase58()}`);
+    // Information about extensions
+    console.log('\nExtensions added:');
+    console.log(`- DefaultAccountState: All new token accounts will be in Initialized state`);
+    console.log(`- MintCloseAuthority: ${payer.publicKey.toBase58()}`);
+    console.log(`- TokenMetadata: Name, symbol, and URI added`);
     
-    // Tạo một tài khoản token
-    console.log('\nTạo một tài khoản token để test...');
+    // TESTING: Create a token account and mint tokens for testing
+    console.log('\nCreating a test token account...');
     
-    // Sử dụng spl-token trực tiếp để tạo tài khoản token
+    // Use spl-token directly to create a token account
     const { 
       getAssociatedTokenAddress, 
       createAssociatedTokenAccountInstruction,
       mintTo: mintToAccount
     } = require('@solana/spl-token');
     
-    // Tạo tài khoản token
+    // Create token account
     const associatedTokenAddress = await getAssociatedTokenAddress(
       mint,
       payer.publicKey,
@@ -101,8 +104,8 @@ async function main() {
       TOKEN_2022_PROGRAM_ID
     );
     
-    // Tạo transaction tạo tài khoản
-    const transaction = new Transaction().add(
+    // Create transaction for token account
+    const accountTransaction = new Transaction().add(
       createAssociatedTokenAccountInstruction(
         payer.publicKey,
         associatedTokenAddress,
@@ -112,30 +115,30 @@ async function main() {
       )
     );
     
-    // Gửi transaction
+    // Send transaction
     try {
       const createAccountSignature = await sendAndConfirmTransaction(
         connection,
-        transaction,
+        accountTransaction,
         [payer]
       );
-      console.log(`Tài khoản token đã tạo thành công: ${associatedTokenAddress.toBase58()}`);
+      console.log(`Token account created successfully: ${associatedTokenAddress.toBase58()}`);
     } catch (error) {
-      // Xử lý lỗi nếu tài khoản đã tồn tại
+      // Handle error if account already exists
       if (error instanceof Error && error.message.includes('account already exists')) {
-        console.log(`Tài khoản token đã tồn tại: ${associatedTokenAddress.toBase58()}`);
+        console.log(`Token account already exists: ${associatedTokenAddress.toBase58()}`);
       } else {
         throw error;
       }
     }
     
-    console.log(`Địa chỉ tài khoản token: ${associatedTokenAddress.toBase58()}`);
+    console.log(`Token account address: ${associatedTokenAddress.toBase58()}`);
     
-    // Mint một số token để test
-    console.log('\nMint token vào tài khoản...');
-    const amount = BigInt(1_000_000_000); // 1 token với 9 decimals
+    // Mint tokens for testing
+    console.log('\nMinting tokens to the account...');
+    const amount = BigInt(1_000_000); // 1 token with 6 decimals
     
-    // Mint token
+    // Mint tokens
     const mintSignature = await mintToAccount(
       connection,
       payer,
@@ -148,16 +151,17 @@ async function main() {
       TOKEN_2022_PROGRAM_ID
     );
     
-    console.log(`Đã mint ${Number(amount) / 1e9} token vào tài khoản`);
+    console.log(`Minted ${Number(amount) / 1e6} tokens to the account`);
     
-    console.log('\nChú ý:');
-    console.log('1. Tài khoản token mới được tạo sẽ mặc định ở trạng thái Initialized');
-    console.log('2. Mint account có thể được đóng bởi MintCloseAuthority');
+    console.log('\nNotes:');
+    console.log('1. New token accounts will default to Initialized state');
+    console.log('2. The mint account can be closed by the MintCloseAuthority');
     
   } catch (error) {
-    console.error('Lỗi khi tạo token:', error);
+    console.error('Error creating token:', error);
+    process.exit(1);
   }
 }
 
-// Chạy hàm main
+// Run the main function
 main(); 

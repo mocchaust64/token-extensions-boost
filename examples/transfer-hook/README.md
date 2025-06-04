@@ -1,99 +1,53 @@
-# Transfer Hook Extension
+# Transfer Hook Example
 
-Transfer Hook is a powerful extension of SPL-Token 2022 that allows you to execute custom code every time a token is transferred. This extension opens up many possibilities such as:
+This directory contains examples of how to use the Transfer Hook Extension with SPL Token-2022.
 
-- Enforcing ownership validation or whitelist/blacklist checks
-- Collecting fees automatically in different tokens
-- Enforcing NFT royalties
-- Accumulating token transfer data
-- Creating events when tokens are transferred
-- Many other use cases...
+## Overview
 
-## How It Works
-
-1. Create a Token with the Transfer Hook Extension, specifying the address of a Transfer Hook program
-2. When a user transfers the token, the Token 2022 program will make a CPI (Cross-Program Invocation) to the specified Transfer Hook program
-3. The Transfer Hook program can:
-   - Perform side actions
-   - Store data
-   - Check conditions
-   - Reject the transaction if conditions are not met
-
-## Usage Guide
-
-### 1. Creating a token with Transfer Hook
-
-```typescript
-// Create an actual Transfer Hook Program and deploy it
-const transferHookProgramId = new PublicKey("YOUR_HOOK_PROGRAM_ID");
-
-// Initialize TokenBuilder
-const tokenBuilder = new TokenBuilder(connection);
-
-// Create token with Transfer Hook
-const { mint, token } = await tokenBuilder
-  .setTokenInfo(9, payer.publicKey)
-  .addTransferHook(transferHookProgramId)
-  .createToken(payer);
-```
-
-### 2. Transferring tokens with Transfer Hook
-
-```typescript
-// Create token account for the recipient
-const { address: recipientTokenAccount } = await transferHookToken.createOrGetTokenAccount(
-  payer,
-  recipient.publicKey
-);
-
-// Transfer tokens
-const transferSignature = await transferHookToken.transfer(
-  ownerTokenAccount,
-  recipientTokenAccount,
-  payer,
-  transferAmount,
-  decimals,
-  extraAccounts // Optional: Additional accounts for the transfer hook
-);
-```
-
-### 3. Combining Transfer Hook with other extensions
-
-You can combine Transfer Hook with other extensions like Metadata:
-
-```typescript
-const { mint } = await tokenBuilder
-  .setTokenInfo(9, payer.publicKey)
-  .addTransferHook(transferHookProgramId)
-  .addTokenMetadata(
-    "Hook Token",
-    "HOOK",
-    "https://example.com/metadata/hook-token.json",
-    {
-      "description": "A token with transfer hook and metadata"
-    }
-  )
-  .createToken(payer);
-```
-
-## Implementing a Transfer Hook Program
-
-To fully use the Transfer Hook feature, you need to:
-
-1. **Build and deploy a Transfer Hook Program** that implements the SPL Transfer Hook Interface
-2. **Create an ExtraAccountMetaList PDA** to store additional accounts required for the Transfer Hook
-3. **Initialize any additional accounts** (if needed) for the Transfer Hook Program
-
-A simple example of a Transfer Hook Program using the Anchor Framework can be found at:
-https://github.com/solana-labs/solana-program-library/tree/master/token/transfer-hook/example
-
-## Important Notes
-
-- Transfer Hooks can only execute code in the program specified when the token is created
-- The Transfer Hook program cannot be changed after the token is created (unless you specify change authority)
-- The source and destination accounts are passed to the Transfer Hook as read-only and cannot be modified
-- When using Transfer Hooks with existing UIs/wallets, transaction signers need to support resolving the ExtraAccountMetaList
+The Transfer Hook extension allows token creators to execute custom code whenever tokens are transferred. This enables advanced functionality like complex fee structures, whitelist verification, compliance checks, and other custom behaviors.
 
 ## Examples
 
-See the full examples in [examples/transfer-hook/index.ts](./index.ts) and [examples/multi-extension-example/metadata-with-extensions-example.ts](../multi-extension-example/metadata-with-extensions-example.ts) 
+### 1. Basic (index.ts)
+
+A basic example of how to create and use a token with the TransferHook extension. This example includes:
+
+- Creating a token with a Transfer Hook program
+- Creating token accounts for the owner and recipient
+- Attempting to transfer tokens (which will fail since the example uses a dummy hook program)
+- Creating a token with both Transfer Hook and Metadata extensions
+
+To run:
+```bash
+npx ts-node examples/transfer-hook/index.ts
+```
+
+## Key Features
+
+TransferHookToken provides the following methods:
+
+- `createTokenInstructions()` - Get instructions to create a token with the TransferHook extension
+- `createTransferInstruction()` - Create instruction to transfer tokens with the hook execution
+- `createTransferInstructionWithExtraAccounts()` - Create transfer instruction with additional accounts for the hook
+- `getTransferHookProgramId()` - Get the program ID of the hook assigned to the token
+
+## Important Note
+
+To fully use the Transfer Hook extension, you need to:
+
+1. **Develop and deploy your own Transfer Hook program** that implements the required interface
+2. **Initialize the extra account meta list** if your program needs additional accounts
+3. Use the program ID of your deployed program when creating tokens
+
+The example in this directory uses a dummy program ID for demonstration purposes only.
+
+## Documentation
+
+For detailed documentation on the TransferHook extension, see:
+- [TransferHook Extension Guide](../../docs/transfer-hook.md)
+
+## Requirements
+
+- Solana CLI Tools
+- Node.js and npm/yarn
+- Sufficient SOL in your wallet (minimum 1 SOL) to perform transactions 

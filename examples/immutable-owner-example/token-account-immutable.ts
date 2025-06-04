@@ -5,24 +5,17 @@ import {
   Transaction,
 } from '@solana/web3.js';
 import { 
-  TOKEN_2022_PROGRAM_ID, 
-  createMint, 
+  TOKEN_2022_PROGRAM_ID,  
   mintTo, 
   AuthorityType, 
   setAuthority,
-  createAssociatedTokenAccountInstruction,
-  createAssociatedTokenAccount,
-  getAssociatedTokenAddress,
-  createTransferCheckedInstruction,
-  getOrCreateAssociatedTokenAccount,
-  getAccount
 } from '@solana/spl-token';
 import { TokenAccount } from '../../src';
 import fs from 'fs';
 import path from 'path';
 import { TokenBuilder } from '../../src';
 
-// Hàm main
+// Main function
 async function main() {
    const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
       const walletPath = path.join(process.env.HOME! , ".config","solana", "id.json");
@@ -31,48 +24,48 @@ async function main() {
       const payer = Keypair.fromSecretKey(secretKey);
       
     
-    // ============== Tạo token cho ví dụ ==============
-    console.log('\n1. Tạo token mới...');
+    // ============== Create token for example ==============
+    console.log('\n1. Creating new token...');
     
-    // Tạo TokenBuilder với connection
+    // Create TokenBuilder with connection
     const tokenBuilder = new TokenBuilder(connection)
       .setTokenInfo(
         9, // decimals
         payer.publicKey, // mint authority
-        null // không cần freeze authority
+        null // freeze authority not needed
       );
     
-    // Tạo token với metadata và các extensions khác
-    console.log('Tạo token...');
+    // Create token with metadata and other extensions
+    console.log('Creating token...');
     
-    // Tạo token sử dụng API mới
-    // Lấy instructions thay vì tạo token trực tiếp
+    // Create token using new API
+    // Get instructions instead of creating token directly
     const { instructions, signers, mint } = 
       await tokenBuilder.createTokenInstructions(payer.publicKey);
     
-    // Tạo và ký transaction
+    // Create and sign transaction
     const tokenTransaction = new Transaction().add(...instructions);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     tokenTransaction.recentBlockhash = blockhash;
     tokenTransaction.lastValidBlockHeight = lastValidBlockHeight;
     tokenTransaction.feePayer = payer.publicKey;
     
-    // Ký và gửi transaction
+    // Sign and send transaction
     tokenTransaction.sign(...signers, payer);
     const tokenSignature = await connection.sendRawTransaction(
       tokenTransaction.serialize(),
       { skipPreflight: false }
     );
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature: tokenSignature,
       blockhash,
       lastValidBlockHeight
     });
     
-    // ============== Tạo token account thông thường ==============
-    console.log('\n2. Tạo token account thông thường...');
+    // ============== Create standard token account ==============
+    console.log('\n2. Creating standard token account...');
     
     const tokenAccount = new TokenAccount(connection, mint, payer.publicKey);
     const { tokenAccount: standardAccount, signature } = await tokenAccount.createAccount(payer);
@@ -80,7 +73,7 @@ async function main() {
     console.log(`Standard token account created: ${standardAccount.toBase58()}`);
     console.log('Transaction signature:', signature);
     
-    // Mint tokens đến account
+    // Mint tokens to account
     console.log('\nMint 100 tokens to account...');
     await mintTo(
       connection,
@@ -88,15 +81,15 @@ async function main() {
       mint,
       standardAccount,
       payer,
-      100 * (10 ** 9), // 100 tokens với 9 decimals
+      100 * (10 ** 9), // 100 tokens with 9 decimals
       [],
       { commitment: 'confirmed' },
       TOKEN_2022_PROGRAM_ID
     );
     console.log('Tokens minted successfully');
     
-    // Thử thay đổi owner của account
-    console.log('\nThử thay đổi owner của account thông thường...');
+    // Try changing the owner of the account
+    console.log('\nTrying to change owner of standard account...');
     
     try {
       const newOwner = Keypair.generate().publicKey;
@@ -116,8 +109,8 @@ async function main() {
       console.log('Error changing standard account owner');
     }
     
-    // ============== Tạo token account với ImmutableOwner ==============
-    console.log('\n3. Tạo token account với ImmutableOwner...');
+    // ============== Create token account with ImmutableOwner ==============
+    console.log('\n3. Creating token account with ImmutableOwner...');
     
     const { tokenAccount: immutableAccount, signature: immutableSig } = 
       await tokenAccount.createAccountWithImmutableOwner(payer);
@@ -125,7 +118,7 @@ async function main() {
     console.log(`Immutable owner token account created: ${immutableAccount.toBase58()}`);
     console.log('Transaction signature:', immutableSig);
     
-    // Mint tokens đến immutable account
+    // Mint tokens to immutable account
     console.log('\nMint 100 tokens to immutable account...');
     await mintTo(
       connection,
@@ -133,15 +126,15 @@ async function main() {
       mint,
       immutableAccount,
       payer,
-      100 * (10 ** 9), // 100 tokens với 9 decimals
+      100 * (10 ** 9), // 100 tokens with 9 decimals
       [],
       { commitment: 'confirmed' },
       TOKEN_2022_PROGRAM_ID
     );
     console.log('Tokens minted successfully');
     
-    // Thử thay đổi owner của immutable account
-    console.log('\nThử thay đổi owner của account với ImmutableOwner...');
+    // Try changing the owner of immutable account
+    console.log('\nTrying to change owner of account with ImmutableOwner...');
     
     try {
       const newOwner = Keypair.generate().publicKey;
@@ -161,8 +154,8 @@ async function main() {
       console.log('Immutable account owner change rejected as expected');
     }
     
-    // ============== Tạo Associated Token Account ==============
-    console.log('\n4. Tạo Associated Token Account...');
+    // ============== Create Associated Token Account ==============
+    console.log('\n4. Creating Associated Token Account...');
     
     const { tokenAccount: associatedAccount, signature: ataSig } = 
       await tokenAccount.createAssociatedTokenAccount(payer);
@@ -170,7 +163,7 @@ async function main() {
     console.log(`Associated Token Account created: ${associatedAccount.toBase58()}`);
     console.log('Transaction signature:', ataSig);
     
-    // Mint tokens đến ATA
+    // Mint tokens to ATA
     console.log('\nMint 100 tokens to Associated Token Account...');
     await mintTo(
       connection,
@@ -178,15 +171,15 @@ async function main() {
       mint,
       associatedAccount,
       payer,
-      100 * (10 ** 9), // 100 tokens với 9 decimals
+      100 * (10 ** 9), // 100 tokens with 9 decimals
       [],
       { commitment: 'confirmed' },
       TOKEN_2022_PROGRAM_ID
     );
     console.log('Tokens minted successfully');
     
-    // Thử thay đổi owner của Associated account (ATA đã có ImmutableOwner tích hợp sẵn)
-    console.log('\nThử thay đổi owner của Associated Token Account...');
+    // Try changing owner of Associated account (ATA already has ImmutableOwner built-in)
+    console.log('\nTrying to change owner of Associated Token Account...');
     
     try {
       const newOwner = Keypair.generate().publicKey;
@@ -206,10 +199,10 @@ async function main() {
       console.log('ATA owner change rejected as expected');
     }
     
-    console.log('\nVí dụ hoàn thành thành công!');
-    console.log('Đã tạo 3 loại token account và chứng minh ImmutableOwner hoạt động đúng.');
+    console.log('\nExample completed successfully!');
+    console.log('Created 3 types of token accounts and demonstrated ImmutableOwner working correctly.');
   
 }
 
-// Chạy ví dụ
+// Run the example
 main(); 

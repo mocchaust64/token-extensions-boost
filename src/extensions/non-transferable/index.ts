@@ -99,10 +99,10 @@ export class NonTransferableToken extends Token {
   /**
    * Create instructions to mint to an account
    * 
-   * @param destination - Địa chỉ tài khoản nhận token
-   * @param authority - Authority được phép mint token
-   * @param amount - Số lượng token cần mint
-   * @returns Object chứa instructions
+   * @param destination - Token account address to receive tokens
+   * @param authority - Authority allowed to mint tokens
+   * @param amount - Amount of tokens to mint
+   * @returns Object containing instructions
    */
   createMintToInstructions(
     destination: PublicKey,
@@ -111,7 +111,7 @@ export class NonTransferableToken extends Token {
   ): { instructions: TransactionInstruction[] } {
     const instructions: TransactionInstruction[] = [];
     
-    // Thêm instruction mint token
+    // Add mint token instruction
     instructions.push(
       createMintToInstruction(
         this.mint,
@@ -127,12 +127,12 @@ export class NonTransferableToken extends Token {
   }
 
   /**
-   * Create instructions to mint to an account (phiên bản mở rộng)
+   * Create instructions to mint to an account (extended version)
    * 
-   * @param owner - Chủ sở hữu tài khoản token
-   * @param amount - Số lượng token cần mint
-   * @param mintAuthority - Authority được phép mint token
-   * @returns Instructions và địa chỉ tài khoản token
+   * @param owner - Token account owner
+   * @param amount - Amount of tokens to mint
+   * @param mintAuthority - Authority allowed to mint tokens
+   * @returns Instructions and token account address
    */
   async createMintToInstructionsWithAddress(
     owner: PublicKey,
@@ -143,7 +143,7 @@ export class NonTransferableToken extends Token {
     address: PublicKey;
   }> {
     try {
-      // Lấy địa chỉ token account
+      // Get token account address
       const tokenAccount = await getAssociatedTokenAddress(
         this.mint,
         owner,
@@ -153,11 +153,11 @@ export class NonTransferableToken extends Token {
 
       const instructions: TransactionInstruction[] = [];
       
-      // Kiểm tra tài khoản đã tồn tại chưa
+      // Check if account already exists
       try {
         await getAccount(this.connection, tokenAccount, "recent", TOKEN_2022_PROGRAM_ID);
       } catch (error) {
-        // Tài khoản chưa tồn tại, thêm instruction tạo mới
+        // Account doesn't exist, add instruction to create it
         instructions.push(
           createAssociatedTokenAccountInstruction(
             owner, // payer
@@ -169,7 +169,7 @@ export class NonTransferableToken extends Token {
         );
       }
 
-      // Thêm instruction mint token
+      // Add mint token instruction
       instructions.push(
         createMintToInstruction(
           this.mint,
@@ -200,7 +200,7 @@ export class NonTransferableToken extends Token {
       const mintInfo = await getMint(this.connection, this.mint, "confirmed", TOKEN_2022_PROGRAM_ID);
      
       if (!mintInfo.tlvData || mintInfo.tlvData.length === 0) {
-        console.log("Không có dữ liệu TLV cho mint");
+        console.log("No TLV data for mint");
         return false;
       }
   

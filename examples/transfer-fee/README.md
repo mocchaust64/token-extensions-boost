@@ -16,7 +16,7 @@ A basic example of how to create and use a token with the TransferFee extension.
 
 To run:
 ```bash
-npx ts-node index.ts
+npx ts-node examples/transfer-fee/index.ts
 ```
 
 ### 2. Multiple Accounts Management (multi-account.ts)
@@ -31,19 +31,24 @@ An advanced example of how to manage fees with multiple accounts. This example d
 
 To run:
 ```bash
-npx ts-node multi-account.ts
+npx ts-node examples/transfer-fee/multi-account.ts
 ```
 
 ## Key Features
 
 TransferFeeToken provides the following methods:
 
-- `create()` - Create a new token with the TransferFeeConfig extension
+- `createTokenInstructions()` - Get instructions to create a token with the TransferFee extension
 - `calculateFee()` - Calculate the fee for a transaction
-- `transfer()` - Transfer tokens with fees
-- `harvestWithheldTokensToMint()` - Harvest fees from accounts to the mint
-- `withdrawFeesFromMint()` - Withdraw fees from the mint to a specified address
+- `createTransferInstruction()` - Create instruction to transfer tokens with fees
+- `createHarvestWithheldTokensToMintInstruction()` - Create instruction to harvest fees from accounts to the mint
+- `createWithdrawFeesFromMintInstruction()` - Create instruction to withdraw fees from the mint to a specified address
 - `findAccountsWithWithheldFees()` - Find all accounts holding withheld fees
+
+## Documentation
+
+For detailed documentation on the TransferFee extension, see:
+- [TransferFee Extension Guide](../../docs/transfer-fee.md)
 
 ## Requirements
 

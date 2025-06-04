@@ -12,23 +12,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * Ví dụ tạo token với DefaultAccountState và kiểm tra trạng thái tài khoản token
+ * Example of creating a token with DefaultAccountState and checking token account status
  */
 async function main() {
   try {
-    // Kết nối đến Solana devnet
+    // Connect to Solana devnet
     const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
     
-    // Đọc keypair từ file
-    console.log('Đọc keypair từ file...');
+    // Read keypair from file
+    console.log('Reading keypair from file...');
     const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
     const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf-8"});
     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
     const payer = Keypair.fromSecretKey(secretKey);
-    console.log(`Địa chỉ ví: ${payer.publicKey.toBase58()}`);
+    console.log(`Wallet address: ${payer.publicKey.toBase58()}`);
 
-    // 1. Tạo token với DefaultAccountState.Frozen
-    console.log('\nTạo token với DefaultAccountState.Frozen...');
+    // 1. Create token with DefaultAccountState.Frozen
+    console.log('\nCreating token with DefaultAccountState.Frozen...');
     
     const tokenBuilder = new TokenBuilder(connection)
       .setTokenInfo(
@@ -40,47 +40,47 @@ async function main() {
         "Frozen by Default Token",
         "FROZ",
         "https://example.com/metadata.json",
-        { "description": "Token với DefaultAccountState.Frozen" }
+        { "description": "Token with DefaultAccountState.Frozen" }
       )
-      // Đặt trạng thái mặc định là Frozen
+      // Set default state as Frozen
       .addDefaultAccountState(AccountState.Frozen);
     
-    // Tạo token sử dụng API mới
-    console.log('Đang tạo token...');
+    // Create token using the new API
+    console.log('Creating token...');
     
-    // Lấy instructions thay vì tạo token trực tiếp
+    // Get instructions instead of directly creating token
     const { instructions, signers, mint } = 
       await tokenBuilder.createTokenInstructions(payer.publicKey);
     
-    // Tạo và ký transaction
+    // Create and sign transaction
     const tokenTransaction = new Transaction().add(...instructions);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     tokenTransaction.recentBlockhash = blockhash;
     tokenTransaction.lastValidBlockHeight = lastValidBlockHeight;
     tokenTransaction.feePayer = payer.publicKey;
     
-    // Ký và gửi transaction
+    // Sign and send transaction
     tokenTransaction.sign(...signers, payer);
     const transactionSignature = await connection.sendRawTransaction(
       tokenTransaction.serialize(),
       { skipPreflight: false }
     );
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature: transactionSignature,
       blockhash,
       lastValidBlockHeight
     });
 
-    // Thêm console.log sau transaction thành công
-    console.log(`Token tạo thành công!`);
-    console.log(`Địa chỉ mint: ${mint.toBase58()}`);
-    console.log(`Chữ ký giao dịch: ${transactionSignature}`);
-    console.log(`Link Solana Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+    // Add console.log after successful transaction
+    console.log(`Token created successfully!`);
+    console.log(`Mint address: ${mint.toBase58()}`);
+    console.log(`Transaction signature: ${transactionSignature}`);
+    console.log(`Solana Explorer link: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
     
-    // 2. Tạo tài khoản token
-    console.log('\nTạo tài khoản token cho token với DefaultAccountState.Frozen...');
+    // 2. Create token account
+    console.log('\nCreating token account for token with DefaultAccountState.Frozen...');
     const associatedTokenAddress = await getAssociatedTokenAddress(
       mint,
       payer.publicKey,
@@ -88,7 +88,7 @@ async function main() {
       TOKEN_2022_PROGRAM_ID
     );
     
-    // Thay vì sử dụng token.createOrGetTokenAccount, dùng phương thức của Token core
+    // Instead of using token.createOrGetTokenAccount, use Token core method
     const transaction = new Transaction().add(
       createAssociatedTokenAccountInstruction(
         payer.publicKey,
@@ -106,21 +106,21 @@ async function main() {
         [payer],
         { commitment: 'confirmed' }
       );
-      console.log(`Tài khoản token được tạo tại: ${associatedTokenAddress.toBase58()}`);
+      console.log(`Token account created at: ${associatedTokenAddress.toBase58()}`);
       console.log(`Transaction signature: ${signature}`);
     } catch (error: any) {
       if (error.message.includes("account already exists")) {
-        console.log(`Tài khoản token đã tồn tại: ${associatedTokenAddress.toBase58()}`);
+        console.log(`Token account already exists: ${associatedTokenAddress.toBase58()}`);
       } else {
         throw error;
       }
     }
 
-    // 3. Mint token vào tài khoản
-    console.log('\nMint token vào tài khoản token...');
-    const mintAmount = BigInt(1_000_000_000); // 1 token với 9 decimals
+    // 3. Mint tokens to the account
+    console.log('\nMinting tokens to the token account...');
+    const mintAmount = BigInt(1_000_000_000); // 1 token with 9 decimals
     
-    // Sử dụng Token core
+    // Use Token core
     const mintTx = new Transaction();
     mintTx.add(
       createMintToInstruction(
@@ -138,14 +138,14 @@ async function main() {
         [payer],
         { commitment: 'confirmed' }
       );
-      console.log(`Đã mint ${Number(mintAmount) / 1e9} token vào tài khoản`);
+      console.log(`Minted ${Number(mintAmount) / 1e9} tokens to the account`);
       console.log(`Transaction signature: ${mintSig}`);
     } catch (error) {
-      console.error('Lỗi khi mint token:', error);
+      console.error('Error minting tokens:', error);
     }
 
-    // 4. Kiểm tra trạng thái của tài khoản token
-    console.log('\nKiểm tra trạng thái tài khoản token...');
+    // 4. Check token account state
+    console.log('\nChecking token account state...');
     try {
       const accountInfo = await getAccount(
         connection,
@@ -154,21 +154,21 @@ async function main() {
         TOKEN_2022_PROGRAM_ID
       );
       
-      console.log('Thông tin tài khoản token:');
-      console.log(`- Trạng thái: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
-      console.log(`- Số dư: ${accountInfo.amount}`);
+      console.log('Token account information:');
+      console.log(`- State: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
+      console.log(`- Balance: ${accountInfo.amount}`);
       
       if (accountInfo.isFrozen) {
-        console.log('✅ DefaultAccountState hoạt động đúng! Tài khoản mới được tạo ra với trạng thái Frozen.');
+        console.log('✅ DefaultAccountState works correctly! New account was created with Frozen state.');
       } else {
-        console.log('❌ DefaultAccountState không hoạt động như mong đợi. Tài khoản không ở trạng thái Frozen.');
+        console.log('❌ DefaultAccountState is not working as expected. Account is not in Frozen state.');
       }
     } catch (error) {
-      console.error('Lỗi khi kiểm tra tài khoản token:', error);
+      console.error('Error checking token account:', error);
     }
 
-    // 5. Tạo thêm một token với DefaultAccountState.Initialized để so sánh
-    console.log('\nTạo token với DefaultAccountState.Initialized để so sánh...');
+    // 5. Create another token with DefaultAccountState.Initialized for comparison
+    console.log('\nCreating token with DefaultAccountState.Initialized for comparison...');
     
     const initializedTokenBuilder = new TokenBuilder(connection)
       .setTokenInfo(
@@ -180,43 +180,43 @@ async function main() {
         "Initialized by Default Token",
         "INIT",
         "https://example.com/metadata.json",
-        { "description": "Token với DefaultAccountState.Initialized" }
+        { "description": "Token with DefaultAccountState.Initialized" }
       )
-      // Đặt trạng thái mặc định là Initialized
+      // Set default state as Initialized
       .addDefaultAccountState(AccountState.Initialized);
     
-    // Tạo token thứ hai sử dụng API mới
-    console.log('Đang tạo token thứ hai...');
+    // Create second token using the new API
+    console.log('Creating second token...');
     
-    // Lấy instructions thay vì tạo token trực tiếp
+    // Get instructions instead of directly creating token
     const { instructions: secondInstructions, signers: secondSigners, mint: secondMint } = 
       await initializedTokenBuilder.createTokenInstructions(payer.publicKey);
     
-    // Tạo và ký transaction
+    // Create and sign transaction
     const secondTokenTx = new Transaction().add(...secondInstructions);
     const secondBlockhashInfo = await connection.getLatestBlockhash();
     secondTokenTx.recentBlockhash = secondBlockhashInfo.blockhash;
     secondTokenTx.lastValidBlockHeight = secondBlockhashInfo.lastValidBlockHeight;
     secondTokenTx.feePayer = payer.publicKey;
     
-    // Ký và gửi transaction
+    // Sign and send transaction
     secondTokenTx.sign(...secondSigners, payer);
     const secondTokenSignature = await connection.sendRawTransaction(
       secondTokenTx.serialize(),
       { skipPreflight: false }
     );
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature: secondTokenSignature,
       blockhash: secondBlockhashInfo.blockhash,
       lastValidBlockHeight: secondBlockhashInfo.lastValidBlockHeight
     });
     
-    console.log(`Token thứ hai tạo thành công! Mint address: ${secondMint.toBase58()}`);
+    console.log(`Second token created successfully! Mint address: ${secondMint.toBase58()}`);
 
-    // 6. Tạo tài khoản token cho token thứ hai
-    console.log('\nTạo tài khoản token cho token thứ hai với DefaultAccountState.Initialized...');
+    // 6. Create token account for second token
+    console.log('\nCreating token account for second token with DefaultAccountState.Initialized...');
     
     const secondTokenAddress = await getAssociatedTokenAddress(
       secondMint,
@@ -225,7 +225,7 @@ async function main() {
       TOKEN_2022_PROGRAM_ID
     );
     
-    // Thay vì sử dụng token.createOrGetTokenAccount, dùng phương thức của Token core
+    // Instead of using token.createOrGetTokenAccount, use Token core method
     const txSecond = new Transaction().add(
       createAssociatedTokenAccountInstruction(
         payer.publicKey,
@@ -243,18 +243,18 @@ async function main() {
         [payer],
         { commitment: 'confirmed' }
       );
-      console.log(`Tài khoản token thứ hai được tạo tại: ${secondTokenAddress.toBase58()}`);
+      console.log(`Second token account created at: ${secondTokenAddress.toBase58()}`);
       console.log(`Transaction signature: ${sigSecond}`);
     } catch (error: any) {
       if (error.message.includes("account already exists")) {
-        console.log(`Tài khoản token thứ hai đã tồn tại: ${secondTokenAddress.toBase58()}`);
+        console.log(`Second token account already exists: ${secondTokenAddress.toBase58()}`);
       } else {
         throw error;
       }
     }
 
-    // 7. Kiểm tra trạng thái của tài khoản token thứ hai
-    console.log('\nKiểm tra trạng thái tài khoản token thứ hai...');
+    // 7. Check second token account state
+    console.log('\nChecking second token account state...');
     try {
       const accountInfo = await getAccount(
         connection,
@@ -263,25 +263,25 @@ async function main() {
         TOKEN_2022_PROGRAM_ID
       );
       
-      console.log('Thông tin tài khoản token thứ hai:');
-      console.log(`- Trạng thái: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
-      console.log(`- Số dư: ${accountInfo.amount}`);
+      console.log('Second token account information:');
+      console.log(`- State: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
+      console.log(`- Balance: ${accountInfo.amount}`);
       
       if (!accountInfo.isFrozen) {
-        console.log('✅ DefaultAccountState hoạt động đúng! Tài khoản mới được tạo ra với trạng thái Initialized.');
+        console.log('✅ DefaultAccountState works correctly! New account was created with Initialized state.');
       } else {
-        console.log('❌ DefaultAccountState không hoạt động như mong đợi. Tài khoản không ở trạng thái Initialized.');
+        console.log('❌ DefaultAccountState is not working as expected. Account is not in Initialized state.');
       }
     } catch (error) {
-      console.error('Lỗi khi kiểm tra tài khoản token thứ hai:', error);
+      console.error('Error checking second token account:', error);
     }
 
-    console.log('\nVí dụ DefaultAccountState đã hoàn tất!');
+    console.log('\nDefaultAccountState example completed!');
     
   } catch (error) {
-    console.error('Lỗi khi thực hiện ví dụ:', error);
+    console.error('Error running example:', error);
   }
 }
 
-// Chạy hàm main
+// Run the main function
 main(); 

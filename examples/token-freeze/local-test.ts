@@ -1,88 +1,89 @@
-import { Connection, Keypair, clusterApiUrl, Transaction, sendAndConfirmTransaction, PublicKey, SystemProgram } from '@solana/web3.js';
+import { Connection, Keypair, clusterApiUrl, Transaction, sendAndConfirmTransaction, PublicKey } from '@solana/web3.js';
 import { TokenBuilder, TokenFreezeExtension, Token } from '../../src';
 import { 
   AccountState, 
   TOKEN_2022_PROGRAM_ID,
   getAccount,
-  
-  
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferCheckedInstruction
 } from '@solana/spl-token';
 import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * Test local cho TokenFreezeExtension - sử dụng keypair thay vì wallet adapter
- * để kiểm tra chức năng cơ bản
+ * Local test for TokenFreezeExtension - using keypair instead of wallet adapter
+ * to test basic functionality
  */
 async function main() {
   try {
-    // Kết nối đến Solana devnet
+    // Connect to Solana devnet
     const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
     
-    // Đọc keypair từ file
-    console.log('Đọc keypair từ file...');
+    // Read keypair from file
+    console.log('Reading keypair from file...');
     const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
     const secretKeyString = fs.readFileSync(walletPath, {encoding: "utf-8"});
     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
     const payer = Keypair.fromSecretKey(secretKey);
-    console.log(`Địa chỉ ví: ${payer.publicKey.toBase58()}`);
+    console.log(`Wallet address: ${payer.publicKey.toBase58()}`);
 
-    // 1. Tạo token với DefaultAccountState.Initialized
-    console.log('\nTạo token với DefaultAccountState.Initialized...');
+    // 1. Create token with DefaultAccountState.Initialized
+    console.log('\nCreating token with DefaultAccountState.Initialized...');
     
     const tokenBuilder = new TokenBuilder(connection)
       .setTokenInfo(
-        9, // decimals
+        6, // decimals (changed from 9 to 6)
         payer.publicKey, // mint authority
         payer.publicKey // freeze authority
       )
-      .addMetadata(
+      .addTokenMetadata(
         "Freeze Example Token",
         "FRZT",
         "https://example.com/metadata.json",
-        { "description": "Token để thử nghiệm đóng băng" }
+        { "description": "Token for testing freeze functionality" }
       )
-      // Đặt trạng thái mặc định là Initialized (không đóng băng)
+      // Set default state to Initialized (not frozen)
       .addDefaultAccountState(AccountState.Initialized);
     
-    // Tạo token sử dụng API mới
-    console.log('Đang tạo token...');
+    // Create token using new API
+    console.log('Creating token...');
     
-    // Lấy instructions thay vì tạo token trực tiếp
+    // Get instructions instead of creating token directly
     const { instructions, signers, mint } = 
       await tokenBuilder.createTokenInstructions(payer.publicKey);
     
-    // Tạo và ký transaction
+    // Create and sign transaction
     const tokenTransaction = new Transaction().add(...instructions);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     tokenTransaction.recentBlockhash = blockhash;
     tokenTransaction.lastValidBlockHeight = lastValidBlockHeight;
     tokenTransaction.feePayer = payer.publicKey;
     
-    // Ký và gửi transaction
+    // Sign and send transaction
     tokenTransaction.sign(...signers, payer);
     const transactionSignature = await connection.sendRawTransaction(
       tokenTransaction.serialize(),
       { skipPreflight: false }
     );
     
-    // Đợi xác nhận
+    // Wait for confirmation
     await connection.confirmTransaction({
       signature: transactionSignature,
       blockhash,
       lastValidBlockHeight
     });
 
-    console.log(`Token tạo thành công!`);
-    console.log(`Địa chỉ mint: ${mint.toBase58()}`);
-    console.log(`Chữ ký giao dịch: ${transactionSignature}`);
-    console.log(`Link Solana Explorer: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+    console.log(`Token created successfully!`);
+    console.log(`Mint address: ${mint.toBase58()}`);
+    console.log(`Transaction signature: ${transactionSignature}`);
+    console.log(`Solana Explorer link: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
     
-    // 2. Tạo tài khoản token
-    console.log('\nTạo tài khoản token...');
+    // 2. Create token account
+    console.log('\nCreating token account...');
     const token = new Token(connection, mint);
     
-    // Lấy địa chỉ associated token account
+    // Get associated token account address
     const associatedTokenAddress = await token.getAssociatedAddress(
       payer.publicKey,
       false
@@ -104,33 +105,33 @@ async function main() {
         [payer],
         { commitment: 'confirmed' }
       );
-      console.log(`Tài khoản token được tạo tại: ${associatedTokenAddress.toBase58()}`);
+      console.log(`Token account created at: ${associatedTokenAddress.toBase58()}`);
       console.log(`Transaction signature: ${signature}`);
     } catch (error: any) {
       if (error.message.includes("account already exists")) {
-        console.log(`Tài khoản token đã tồn tại: ${associatedTokenAddress.toBase58()}`);
+        console.log(`Token account already exists: ${associatedTokenAddress.toBase58()}`);
       } else {
         throw error;
       }
     }
 
-    // 3. Mint token vào tài khoản
-    console.log('\nMint token vào tài khoản token...');
-    const mintAmount = BigInt(1_000_000_000); // 1 token với 9 decimals
+    // 3. Mint tokens to account
+    console.log('\nMinting tokens to token account...');
+    const mintAmount = BigInt(1_000_000); // 1 token with 6 decimals
     
     try {
-      // Tạo các instruction cần thiết để mint token
+      // Create necessary instructions to mint tokens
       const { instructions: mintInstructions } = token.createMintToInstructions(
-        associatedTokenAddress, // Tài khoản đích
+        associatedTokenAddress, // Destination account
         payer.publicKey,        // Mint authority
-        mintAmount              // Số lượng token
+        mintAmount              // Token amount
       );
       
-      // Tạo transaction với các instruction
+      // Create transaction with instructions
       const mintTx = new Transaction();
       mintInstructions.forEach(ix => mintTx.add(ix));
       
-      // Gửi và xác nhận transaction
+      // Send and confirm transaction
       const mintSig = await sendAndConfirmTransaction(
         connection,
         mintTx,
@@ -138,51 +139,51 @@ async function main() {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Đã mint ${Number(mintAmount) / 1e9} token vào tài khoản`);
+      console.log(`Minted ${Number(mintAmount) / 1e6} tokens to account`);
       console.log(`Transaction signature: ${mintSig}`);
     } catch (error) {
-      console.error('Lỗi khi mint token:', error);
+      console.error('Error minting tokens:', error);
     }
 
-    // 4. Kiểm tra trạng thái ban đầu của tài khoản token
-    console.log('\nKiểm tra trạng thái ban đầu của tài khoản token...');
+    // 4. Check initial state of token account
+    console.log('\nChecking initial state of token account...');
     try {
-      // Sử dụng getAccount từ lớp Token 
+      // Use getAccount from Token class
       const accountInfo = await token.getAccount(
         associatedTokenAddress,
         'confirmed'
       );
       
-      console.log('Thông tin tài khoản token:');
-      console.log(`- Trạng thái: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
-      console.log(`- Số dư: ${accountInfo.amount}`);
+      console.log('Token account information:');
+      console.log(`- State: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
+      console.log(`- Balance: ${accountInfo.amount}`);
     } catch (error) {
-      console.error('Lỗi khi kiểm tra tài khoản token:', error);
+      console.error('Error checking token account:', error);
       return;
     }
 
-    // 5. Đóng băng tài khoản token - Sử dụng API mới
-    console.log('\nĐóng băng tài khoản token...');
+    // 5. Freeze token account - Using new API
+    console.log('\nFreezing token account...');
     try {
-      // Tạo instruction đóng băng
+      // Create freeze instruction
       const freezeInstruction = TokenFreezeExtension.createFreezeAccountInstruction(
         associatedTokenAddress,
         mint,
         payer.publicKey
       );
       
-      // Tạo transaction từ instruction
+      // Create transaction from instruction
       const freezeTx = TokenFreezeExtension.buildTransaction(
         [freezeInstruction],
         payer.publicKey
       );
       
-      // Lấy blockhash
+      // Get blockhash
       const freezeBlockhash = await connection.getLatestBlockhash();
       freezeTx.recentBlockhash = freezeBlockhash.blockhash;
       freezeTx.lastValidBlockHeight = freezeBlockhash.lastValidBlockHeight;
       
-      // Ký và gửi transaction
+      // Sign and send transaction
       const freezeSig = await sendAndConfirmTransaction(
         connection,
         freezeTx,
@@ -190,53 +191,116 @@ async function main() {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Tài khoản token đã được đóng băng!`);
+      console.log(`Token account has been frozen!`);
       console.log(`Transaction signature: ${freezeSig}`);
     } catch (error) {
-      console.error('Lỗi khi đóng băng tài khoản token:', error);
+      console.error('Error freezing token account:', error);
       return;
     }
 
-    // 6. Kiểm tra trạng thái sau khi đóng băng
-    console.log('\nKiểm tra trạng thái sau khi đóng băng tài khoản token...');
+    // 6. Check state after freezing
+    console.log('\nChecking state after freezing...');
     try {
       const accountInfo = await token.getAccount(
         associatedTokenAddress,
         'confirmed'
       );
       
-      console.log('Thông tin tài khoản token:');
-      console.log(`- Trạng thái: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
-      console.log(`- Số dư: ${accountInfo.amount}`);
-      
-      if (accountInfo.isFrozen) {
-        console.log('✅ Đóng băng tài khoản token thành công!');
-      } else {
-        console.log('❌ Đóng băng tài khoản token thất bại.');
-        return;
-      }
+      console.log('Token account information:');
+      console.log(`- State: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
+      console.log(`- Balance: ${accountInfo.amount}`);
     } catch (error) {
-      console.error('Lỗi khi kiểm tra tài khoản token:', error);
+      console.error('Error checking token account:', error);
       return;
     }
-
-    // 7. Mở đóng băng tài khoản token - Sử dụng phương thức chuẩn bị transaction
-    console.log('\nMở đóng băng tài khoản token...');
+    
+    // 7. Try to transfer from frozen account (should fail)
+    console.log('\nTrying to transfer from frozen account (should fail)...');
+    
+    // Create a new account to receive the transfer
+    const recipient = Keypair.generate();
+    console.log(`Recipient address: ${recipient.publicKey.toString()}`);
+    
+    // Create recipient token account
+    const recipientTokenAccount = await getAssociatedTokenAddress(
+      mint,
+      recipient.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+    
+    // Create the account if it doesn't exist
+    const createAccountTx = new Transaction().add(
+      createAssociatedTokenAccountInstruction(
+        payer.publicKey,
+        recipientTokenAccount,
+        recipient.publicKey,
+        mint,
+        TOKEN_2022_PROGRAM_ID
+      )
+    );
+    
+    await sendAndConfirmTransaction(
+      connection,
+      createAccountTx,
+      [payer],
+      { commitment: 'confirmed' }
+    );
+    
+    console.log(`Recipient token account: ${recipientTokenAccount.toString()}`);
+    
     try {
-      // Sử dụng phương thức tiện ích để chuẩn bị transaction
-      const thawTx = TokenFreezeExtension.prepareThawAccountTransaction(
+      // Create transfer instruction
+      const transferAmount = BigInt(100_000); // 0.1 tokens with 6 decimals
+      const transferTx = new Transaction().add(
+        createTransferCheckedInstruction(
+          associatedTokenAddress,
+          mint,
+          recipientTokenAccount,
+          payer.publicKey,
+          transferAmount,
+          6,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        )
+      );
+      
+      // Send transaction
+      await sendAndConfirmTransaction(
+        connection,
+        transferTx,
+        [payer],
+        { commitment: 'confirmed' }
+      );
+      
+      console.log('ERROR: Transfer from frozen account succeeded when it should have failed!');
+    } catch (error: any) {
+      console.log('Transfer from frozen account failed as expected');
+      console.log(`Error message: ${error.message}`);
+    }
+    
+    // 8. Thaw the account
+    console.log('\nThawing token account...');
+    try {
+      // Create thaw instruction
+      const thawInstruction = TokenFreezeExtension.createThawAccountInstruction(
         associatedTokenAddress,
         mint,
-        payer.publicKey,
         payer.publicKey
       );
       
-      // Lấy blockhash
+      // Create transaction from instruction
+      const thawTx = TokenFreezeExtension.buildTransaction(
+        [thawInstruction],
+        payer.publicKey
+      );
+      
+      // Get blockhash
       const thawBlockhash = await connection.getLatestBlockhash();
       thawTx.recentBlockhash = thawBlockhash.blockhash;
       thawTx.lastValidBlockHeight = thawBlockhash.lastValidBlockHeight;
       
-      // Ký và gửi transaction
+      // Sign and send transaction
       const thawSig = await sendAndConfirmTransaction(
         connection,
         thawTx,
@@ -244,144 +308,70 @@ async function main() {
         { commitment: 'confirmed' }
       );
       
-      console.log(`Tài khoản token đã được mở đóng băng!`);
+      console.log(`Token account has been thawed!`);
       console.log(`Transaction signature: ${thawSig}`);
     } catch (error) {
-      console.error('Lỗi khi mở đóng băng tài khoản token:', error);
+      console.error('Error thawing token account:', error);
       return;
     }
-
-    // 8. Kiểm tra trạng thái sau khi mở đóng băng
-    console.log('\nKiểm tra trạng thái sau khi mở đóng băng tài khoản token...');
+    
+    // 9. Check state after thawing
+    console.log('\nChecking state after thawing...');
     try {
       const accountInfo = await token.getAccount(
         associatedTokenAddress,
         'confirmed'
       );
       
-      console.log('Thông tin tài khoản token:');
-      console.log(`- Trạng thái: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
-      console.log(`- Số dư: ${accountInfo.amount}`);
-      
-      if (!accountInfo.isFrozen) {
-        console.log('✅ Mở đóng băng tài khoản token thành công!');
-      } else {
-        console.log('❌ Mở đóng băng tài khoản token thất bại.');
-        return;
-      }
+      console.log('Token account information:');
+      console.log(`- State: ${accountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
+      console.log(`- Balance: ${accountInfo.amount}`);
     } catch (error) {
-      console.error('Lỗi khi kiểm tra tài khoản token:', error);
+      console.error('Error checking token account:', error);
       return;
     }
-
-    // 9. Cập nhật trạng thái mặc định của token sang Frozen
-    console.log('\nCập nhật trạng thái mặc định của token sang Frozen...');
+    
+    // 10. Try to transfer from thawed account (should succeed)
+    console.log('\nTrying to transfer from thawed account...');
     try {
-      // Sử dụng phương thức tiện ích để chuẩn bị transaction
-      const updateTx = TokenFreezeExtension.prepareUpdateDefaultAccountStateTransaction(
-        mint,
-        AccountState.Frozen,
-        payer.publicKey,
-        payer.publicKey
+      // Create transfer instruction
+      const transferAmount = BigInt(100_000); // 0.1 tokens with 6 decimals
+      const transferTx = new Transaction().add(
+        createTransferCheckedInstruction(
+          associatedTokenAddress,
+          mint,
+          recipientTokenAccount,
+          payer.publicKey,
+          transferAmount,
+          6,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        )
       );
       
-      // Lấy blockhash
-      const updateBlockhash = await connection.getLatestBlockhash();
-      updateTx.recentBlockhash = updateBlockhash.blockhash;
-      updateTx.lastValidBlockHeight = updateBlockhash.lastValidBlockHeight;
-      
-      // Ký và gửi transaction
-      const updateSig = await sendAndConfirmTransaction(
+      // Send transaction
+      const transferSig = await sendAndConfirmTransaction(
         connection,
-        updateTx,
+        transferTx,
         [payer],
         { commitment: 'confirmed' }
       );
       
-      console.log(`Trạng thái mặc định của token đã được cập nhật sang Frozen!`);
-      console.log(`Transaction signature: ${updateSig}`);
-    } catch (error) {
-      console.error('Lỗi khi cập nhật trạng thái mặc định của token:', error);
-      return;
-    }
-
-    // 10. Tạo tài khoản token mới để kiểm tra trạng thái mặc định
-    const receiver = Keypair.generate();
-    console.log(`\nTạo tài khoản hệ thống cho người nhận mới: ${receiver.publicKey.toBase58()}`);
-    
-    // Chuyển SOL cho tài khoản mới
-    const fundTx = new Transaction().add(
-      // Transfer 0.01 SOL
-      SystemProgram.transfer({
-        fromPubkey: payer.publicKey,
-        toPubkey: receiver.publicKey,
-        lamports: 10000000
-      })
-    );
-    
-    await sendAndConfirmTransaction(
-      connection,
-      fundTx,
-      [payer],
-      { commitment: 'confirmed' }
-    );
-    
-    // Tạo tài khoản token mới
-    console.log('\nTạo tài khoản token mới sau khi cập nhật trạng thái mặc định...');
-    const newTokenAddress = await token.getAssociatedAddress(
-      receiver.publicKey,
-      false
-    );
-    
-    const newAccountTx = new Transaction().add(
-      token.createAssociatedTokenAccountInstruction(
-        payer.publicKey,
-        newTokenAddress,
-        receiver.publicKey
-      )
-    );
-
-    try {
-      const newAccountSig = await sendAndConfirmTransaction(
-        connection,
-        newAccountTx,
-        [payer],
-        { commitment: 'confirmed' }
-      );
-      console.log(`Tài khoản token mới được tạo tại: ${newTokenAddress.toBase58()}`);
-      console.log(`Transaction signature: ${newAccountSig}`);
+      console.log(`Transfer from thawed account succeeded!`);
+      console.log(`Transferred ${Number(transferAmount) / 1e6} tokens`);
+      console.log(`Transaction signature: ${transferSig}`);
     } catch (error: any) {
-      console.error('Lỗi khi tạo tài khoản token mới:', error);
-      return;
+      console.error('Error transferring from thawed account:', error);
+      console.error(`Error message: ${error.message}`);
     }
-
-    // 11. Kiểm tra trạng thái của tài khoản token mới
-    console.log('\nKiểm tra trạng thái của tài khoản token mới...');
-    try {
-      const newAccountInfo = await token.getAccount(
-        newTokenAddress,
-        'confirmed'
-      );
-      
-      console.log('Thông tin tài khoản token mới:');
-      console.log(`- Trạng thái: ${newAccountInfo.isFrozen ? 'Frozen' : 'Initialized'}`);
-      
-      if (newAccountInfo.isFrozen) {
-        console.log('✅ Cập nhật trạng thái mặc định thành công! Tài khoản mới được tạo ra với trạng thái Frozen.');
-      } else {
-        console.log('❌ Cập nhật trạng thái mặc định thất bại. Tài khoản mới không ở trạng thái Frozen.');
-      }
-    } catch (error) {
-      console.error('Lỗi khi kiểm tra tài khoản token mới:', error);
-      return;
-    }
-
-    console.log('\nVí dụ TokenFreezeExtension đã hoàn tất!');
+    
+    console.log('\nToken Freeze Extension example completed!');
     
   } catch (error) {
-    console.error('Lỗi khi thực hiện ví dụ:', error);
+    console.error('Error:', error);
+    process.exit(1);
   }
 }
 
-// Chạy hàm main
+// Run main function
 main(); 

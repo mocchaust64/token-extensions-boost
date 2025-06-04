@@ -1,63 +1,241 @@
-# Extension Compatibility Test
+# Token Extensions Compatibility API Documentation
 
-This directory contains a test script to check compatibility between different Token 2022 extensions. The test creates tokens with various extension combinations to determine which combinations work together.
+## Overview
 
-## Purpose
+The Token Extensions SDK allows you to create and manage tokens on Solana with various extensions. This module helps you check the compatibility between different token extensions and create tokens with multiple extensions combined.
 
-Different Token 2022 extensions may or may not be compatible with each other. This test helps developers understand:
-- Which extension combinations are compatible
-- Which combinations are not compatible and why
-- How to properly build tokens with multiple extensions
-
-## How to Run the Test
+## Installation
 
 ```bash
-# Install dependencies
-npm install
+# Install the SDK
+npm install solana-token-extension-boost
+
+# Or using yarn
+yarn add solana-token-extension-boost
+```
+
+## How to Use the API
+
+### 1. Import Required Modules
+
+```typescript
+import { TokenBuilder } from "solana-token-extension-boost";
+import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
+import { ExtensionType } from "@solana/spl-token";
+```
+
+### 2. Initialize Connection and Account
+
+```typescript
+// Connect to Solana cluster
+const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+
+// Create or import keypair
+const payer = Keypair.generate(); // In a real environment, use wallet-adapter
+```
+
+### 3. Check Compatibility Between Extensions
+
+The SDK provides a function to check compatibility between extensions:
+
+```typescript
+function checkExtensionCompatibility(extensionTypes: ExtensionType[]): {
+  isCompatible: boolean;
+  reason?: string;
+} {
+  const incompatiblePairs: [ExtensionType, ExtensionType][] = [];
+  
+  // Check extensions incompatible with NonTransferable
+  if (extensionTypes.includes(ExtensionType.NonTransferable)) {
+    if (extensionTypes.includes(ExtensionType.TransferFeeConfig)) {
+      incompatiblePairs.push([ExtensionType.NonTransferable, ExtensionType.TransferFeeConfig]);
+    }
+    
+    if (extensionTypes.includes(ExtensionType.TransferHook)) {
+      incompatiblePairs.push([ExtensionType.NonTransferable, ExtensionType.TransferHook]);
+    }
+  }
+  
+  // Check extensions incompatible with ConfidentialTransfer
+  if (extensionTypes.includes(ExtensionType.ConfidentialTransferMint)) {
+    if (extensionTypes.includes(ExtensionType.TransferFeeConfig)) {
+      incompatiblePairs.push([ExtensionType.ConfidentialTransferMint, ExtensionType.TransferFeeConfig]);
+    }
+    
+    if (extensionTypes.includes(ExtensionType.TransferHook)) {
+      incompatiblePairs.push([ExtensionType.ConfidentialTransferMint, ExtensionType.TransferHook]);
+    }
+    
+    if (extensionTypes.includes(ExtensionType.PermanentDelegate)) {
+      incompatiblePairs.push([ExtensionType.ConfidentialTransferMint, ExtensionType.PermanentDelegate]);
+    }
+  }
+  
+  if (incompatiblePairs.length > 0) {
+    const reasons = incompatiblePairs.map(([a, b]) => 
+      `${ExtensionType[a]} and ${ExtensionType[b]} are not compatible`
+    );
+    
+    return {
+      isCompatible: false,
+      reason: reasons.join("; ")
+    };
+  }
+  
+  return { isCompatible: true };
+}
+```
+
+### 4. Create a Token with Multiple Extensions
+
+Use TokenBuilder to create a token with multiple extensions:
+
+```typescript
+async function createTokenWithExtensions() {
+  const tokenBuilder = new TokenBuilder(connection);
+  
+  // Set up basic information
+  tokenBuilder.setTokenInfo(
+    9, // decimals
+    payer.publicKey // mint authority
+  );
+  
+  // Add NonTransferable extension (token cannot be transferred)
+  tokenBuilder.addNonTransferable();
+  
+  // Add PermanentDelegate extension (permanent delegation)
+  tokenBuilder.addPermanentDelegate(payer.publicKey);
+  
+  // Add Metadata extension
+  tokenBuilder.addTokenMetadata(
+    "Test Token",
+    "TEST",
+    "https://example.com/token.json",
+    {
+      "description": "Test token with multiple extensions",
+      "creator": payer.publicKey.toString()
+    }
+  );
+  
+  // Create instructions instead of directly creating the token
+  const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+  
+  // Create transaction from instructions
+  const transaction = new Transaction();
+  instructions.forEach(ix => transaction.add(ix));
+  
+  // Send and confirm transaction
+  const signature = await sendAndConfirmTransaction(
+    connection,
+    transaction,
+    [payer, ...signers],
+    { commitment: 'confirmed' }
+  );
+  
+  console.log(`Token created successfully! Mint address: ${mint.toString()}`);
+  console.log(`Transaction signature: ${signature}`);
+  
+  return { mint, signature };
+}
+```
+
+## Compatibility Matrix Between Extensions
+
+The table below shows the compatibility between common extensions:
+
+| Extension            | NonTransferable | TransferFee | TransferHook | ConfidentialTransfer | PermanentDelegate |
+|----------------------|-----------------|-------------|--------------|----------------------|-------------------|
+| NonTransferable      | ✅              | ❌          | ❌           | ✅                   | ✅                |
+| TransferFee          | ❌              | ✅          | ✅           | ❌                   | ✅                |
+| TransferHook         | ❌              | ✅          | ✅           | ❌                   | ✅                |
+| ConfidentialTransfer | ✅              | ❌          | ❌           | ✅                   | ❌                |
+| PermanentDelegate    | ✅              | ✅          | ✅           | ❌                   | ✅                |
+| MetadataPointer      | ✅              | ✅          | ✅           | ✅                   | ✅                |
+
+## Incompatible Extension Pairs
+
+Some extensions cannot be used together:
+
+1. **NonTransferable** is not compatible with:
+   - TransferFee (since tokens cannot be transferred, transfer fees cannot be applied)
+   - TransferHook (since tokens cannot be transferred, hooks cannot be executed)
+
+2. **ConfidentialTransfer** is not compatible with:
+   - TransferFee (since transfer amounts are encrypted, fees cannot be calculated)
+   - TransferHook (since transfer amounts are encrypted, hooks cannot process them)
+   - PermanentDelegate (since permanent delegation conflicts with transfer confidentiality)
+
+## Running Compatibility Tests
+
+To check and run compatibility tests between extensions:
+
+```bash
+# Navigate to the example directory
+cd examples/extension-compatibility-test
 
 # Run the test
 npx ts-node test-extension-compatibility.ts
 ```
 
-## Test Overview
+## Example Output
 
-The test script:
-1. Checks theoretical compatibility based on known constraints
-2. Attempts to create tokens with different extension pairs
-3. Reports success or failure for each combination
-4. Provides explanation for incompatible pairs
+```
+=== TOKEN EXTENSION COMPATIBILITY TEST ===
 
-## Extension Pairs Tested
+Checking extension compatibility:
+✅ NonTransferable + PermanentDelegate: Compatible in theory
+✅ TransferFee + PermanentDelegate: Compatible in theory
+✅ TransferFee + TransferHook: Compatible in theory
+✅ MetadataPointer + PermanentDelegate: Compatible in theory
+✅ NonTransferable + MetadataPointer: Compatible in theory
 
-The script tests the following extension combinations:
-- NonTransferable + PermanentDelegate
-- TransferFee + PermanentDelegate
-- TransferFee + TransferHook
-- MetadataPointer + PermanentDelegate
-- NonTransferable + MetadataPointer
+Token creation test results:
+✅ NonTransferable + PermanentDelegate: Success! Token: AQFZxpbBGoJ2FveJZM4qRSKAxUmrTPBPytpq5sDjL6qt
+✅ TransferFee + PermanentDelegate: Success! Token: 6HtCzF1YqgZgWnNiPn4ZCAJuCS4moy3WuuHHefkxpgCr
+✅ TransferFee + TransferHook: Success! Token: 9c1e45d6ByL37kiUuVjakczzALsDXZvKZzkPiYtFaQ8g
+✅ MetadataPointer + PermanentDelegate: Success! Token: 34dHqr2kzpmhLWVXnGh1zyyaVF3U3HHizYuVJqJHHmjx
+✅ NonTransferable + MetadataPointer: Success! Token: 2Q9VYNbWa9wwz1yQGmutKMfzCHmchbS3zz3pd3o9bx8o
+```
 
-## Known Incompatibilities
+## Integration with Projects
 
-Based on the Token 2022 program design:
+The Token Extensions SDK is designed to be easily integrated with web projects using wallet-adapter:
 
-1. **NonTransferable** is not compatible with:
-   - TransferFee
-   - TransferHook
+```typescript
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { TokenBuilder } from "solana-token-extension-boost";
 
-2. **ConfidentialTransfer** is not compatible with:
-   - TransferFee
-   - TransferHook
-   - PermanentDelegate
-
-## Using This Test
-
-Developers can:
-1. Run this test to understand extension compatibility
-2. Use the test results to guide token design decisions
-3. Modify the script to test additional extension combinations
-4. Reference the compatibility matrix when building multi-extension tokens
-
-## Result Interpretation
-
-- ✅ Compatible: The extension combination works successfully
-- ❌ Not compatible: The extension combination fails, with error message provided 
+function CreateTokenComponent() {
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction } = useWallet();
+  
+  const handleCreateToken = async () => {
+    if (!publicKey) return;
+    
+    const tokenBuilder = new TokenBuilder(connection)
+      .setTokenInfo(9, publicKey)
+      .addNonTransferable()
+      .addTokenMetadata(
+        "My Token",
+        "MT",
+        "https://example.com/metadata.json",
+        { "description": "My custom token" }
+      );
+      
+    const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(publicKey);
+    
+    const transaction = new Transaction().add(...instructions);
+    const signature = await sendTransaction(transaction, connection, {
+      signers: signers
+    });
+    
+    console.log(`Token created: ${mint.toString()}`);
+  };
+  
+  return (
+    <button onClick={handleCreateToken} disabled={!publicKey}>
+      Create Token
+    </button>
+  );
+}
+``` 

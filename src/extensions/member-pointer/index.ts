@@ -1,22 +1,22 @@
 import { PublicKey } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 
-// Định nghĩa MemberPointer extension type (chưa có trong ExtensionType tiêu chuẩn)
-export const MemberPointerExtensionType = 21; // Giả định ID cho MemberPointer
+// Define MemberPointer extension type (not yet available in standard ExtensionType)
+export const MemberPointerExtensionType = 21; // Assumed ID for MemberPointer
 
 /**
- * Tạo instruction để khởi tạo member pointer cho một token
- * @param mint - Địa chỉ mint
- * @param memberMint - Địa chỉ mint của token mà token này là thành viên của
- * @param programId - Program ID của Token Extension
- * @returns Instruction để khởi tạo member pointer
+ * Create instruction to initialize member pointer for a token
+ * @param mint - Mint address
+ * @param memberMint - Mint address of the token that this token is a member of
+ * @param programId - Token Extension Program ID
+ * @returns Instruction to initialize member pointer
  */
 export function createInitializeMemberPointerInstruction(
   mint: PublicKey,
   memberMint: PublicKey,
   programId = TOKEN_2022_PROGRAM_ID
 ): any {
-  // Trong thực tế, đây là nơi bạn sẽ triển khai logic để tạo instruction
+  // In practice, this is where you would implement logic to create the instruction
   return {
     programId,
     keys: [
@@ -28,15 +28,15 @@ export function createInitializeMemberPointerInstruction(
 }
 
 /**
- * Class cho việc quản lý member pointer trong token groups
+ * Class for managing member pointers in token groups
  */
 export class MemberPointerExtension {
   /**
-   * Tạo instruction để khởi tạo member pointer cho một token
-   * @param mint - Địa chỉ mint
-   * @param memberMint - Địa chỉ mint của token mà token này là thành viên của
-   * @param programId - Program ID của Token Extension
-   * @returns Instruction để khởi tạo member pointer
+   * Create instruction to initialize member pointer for a token
+   * @param mint - Mint address
+   * @param memberMint - Mint address of the token that this token is a member of
+   * @param programId - Token Extension Program ID
+   * @returns Instruction to initialize member pointer
    */
   static createInitializeMemberPointerInstruction(
     mint: PublicKey,
@@ -51,19 +51,19 @@ export class MemberPointerExtension {
   }
 
   /**
-   * Kiểm tra xem một token có phải là thành viên của token group hay không
-   * @param connection - Connection đến Solana cluster
-   * @param mint - Địa chỉ mint của token
-   * @param groupMint - Địa chỉ mint của token group
-   * @returns Promise<boolean> - True nếu token là thành viên của group
+   * Check if a token is a member of a token group
+   * @param connection - Connection to Solana cluster
+   * @param mint - Mint address of the token
+   * @param groupMint - Mint address of the token group
+   * @returns Promise<boolean> - True if token is a member of the group
    */
   static async isMemberOfGroup(
     // connection: Connection,
     // mint: PublicKey,
     // groupMint: PublicKey
   ): Promise<boolean> {
-    // Trong thực tế, đây là nơi sẽ truy vấn on-chain data để kiểm tra
-    // Cho mục đích demo, chúng ta sẽ trả về giá trị giả định
+    // In practice, this is where you would query on-chain data to check
+    // For demo purposes, we'll return an assumed value
     return Promise.resolve(true);
   }
 } 

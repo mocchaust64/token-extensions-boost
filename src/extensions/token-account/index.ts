@@ -32,10 +32,10 @@ export class TokenAccount {
   }
   
   /**
+   * Create a standard token account
    * 
-   * 
-   * @param payer
-   * @returns 
+   * @param payer - Transaction fee payer
+   * @returns Token account information
    */
   async createAccount(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
@@ -78,10 +78,10 @@ export class TokenAccount {
   }
   
   /**
+   * Create a token account with immutable owner extension
    * 
-   * 
-   * @param payer 
-   * @returns 
+   * @param payer - Transaction fee payer
+   * @returns Token account information
    */
   async createAccountWithImmutableOwner(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
@@ -93,7 +93,7 @@ export class TokenAccount {
     const lamports = await this.connection.getMinimumBalanceForRentExemption(accountLen);
     const transaction = new Transaction();
     
- 
+    // Step 1: Create the account
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -104,7 +104,7 @@ export class TokenAccount {
       })
     );
     
-
+    // Step 2: Initialize the immutable owner extension
     transaction.add(
       createInitializeImmutableOwnerInstruction(
         tokenAccountKeypair.publicKey,
@@ -112,7 +112,7 @@ export class TokenAccount {
       )
     );
     
- 
+    // Step 3: Initialize the account
     transaction.add(
       createInitializeAccountInstruction(
         tokenAccountKeypair.publicKey,
@@ -122,7 +122,7 @@ export class TokenAccount {
       )
     );
     
-    // Gửi transaction
+    // Send transaction
     const signature = await sendAndConfirmTransaction(
       this.connection,
       transaction,
@@ -138,16 +138,17 @@ export class TokenAccount {
   }
   
   /**
-   *
+   * Create an Associated Token Account
+   * Note: ATAs already have immutable owner built-in
    * 
-   * @param payer 
-   * @returns 
+   * @param payer - Transaction fee payer
+   * @returns Token account information
    */
   async createAssociatedTokenAccount(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
     signature: string;
   }> {
-   
+    // Get the Associated Token Account address
     const tokenAccount = getAssociatedTokenAddressSync(
       this.mint,
       this.owner,
@@ -183,16 +184,17 @@ export class TokenAccount {
   }
   
   /**
+   * Create a token account with immutable owner using the helper function
+   * Alternative method using the SPL-token helper
    * 
-   * 
-   * @param payer 
-   * @returns 
+   * @param payer - Transaction fee payer
+   * @returns Token account information
    */
   async createAccountWithImmutableOwnerAlt(payer: Keypair): Promise<{
     tokenAccount: PublicKey;
     signature: string;
   }> {
-   
+    // Use the SPL-token helper function to create an account
     const tokenAccount = await createAccount(
       this.connection,
       payer,
@@ -210,11 +212,12 @@ export class TokenAccount {
   }
   
   /**
+   * Create an account with default state
+   * This allows setting a default state for the account (e.g., frozen)
    * 
-   * 
-   * @param payer 
-   * @param state 
-   * @returns 
+   * @param payer - Transaction fee payer
+   * @param state - Default account state
+   * @returns Token account information
    */
   async createAccountWithDefaultState(payer: Keypair, state: AccountState): Promise<{
     tokenAccount: PublicKey;

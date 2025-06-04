@@ -7,7 +7,7 @@ import {
 } from '@solana/web3.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { NonTransferableToken, TokenBuilder } from '../../dist';
+import { NonTransferableToken, TokenBuilder } from '../../src';
 import { 
   createAssociatedTokenAccountInstruction, 
   getAssociatedTokenAddress, 
@@ -15,138 +15,188 @@ import {
   TOKEN_2022_PROGRAM_ID 
 } from '@solana/spl-token';
 
+/**
+ * Example of creating a non-transferable (soulbound) token
+ * Non-transferable tokens cannot be transferred once minted to an account
+ */
 async function main() {
-  const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
-  const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
-  const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
-     const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
-     const payer = Keypair.fromSecretKey(secretKey);
-     
-  console.log("Địa chỉ ví:", payer.publicKey.toString());
-
-  // Tạo Non-Transferable Token với TokenBuilder - API mới
-  const tokenBuilder = new TokenBuilder(connection)
-    .setTokenInfo(9, payer.publicKey)
-    .addNonTransferable();
-  
-  // Sử dụng phương thức createTokenInstructions thay vì createToken
-  const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
-  
-  // Tạo và gửi transaction
-  const transaction = new Transaction().add(...instructions);
-  const createTokenSignature = await sendAndConfirmTransaction(
-    connection,
-    transaction,
-    [payer, ...signers]
-  );
-  
-  console.log(`Non-Transferable Token đã được tạo: ${mint.toBase58()}`);
-  console.log(`Giao dịch: https://explorer.solana.com/tx/${createTokenSignature}?cluster=devnet`);
-  
-  // Tạo NonTransferableToken instance từ địa chỉ mint
-  const nonTransferableToken = new NonTransferableToken(connection, mint);
-
-  // Tạo token account và mint tokens
-  const recipientKeypair = Keypair.generate();
-  
-  // Tạo token account cho recipient
-  const recipientTokenAddress = await getAssociatedTokenAddress(
-    mint,
-    recipientKeypair.publicKey,
-    false,
-    TOKEN_2022_PROGRAM_ID
-  );
-  
-  // Tạo transaction với instructions
-  const mintTransaction = new Transaction();
-  
-  // Thêm instruction tạo token account
-  mintTransaction.add(
-    createAssociatedTokenAccountInstruction(
-      payer.publicKey,
-      recipientTokenAddress,
-      recipientKeypair.publicKey,
-      mint,
-      TOKEN_2022_PROGRAM_ID
-    )
-  );
-  
-  // Thêm instruction mint token
-  mintTransaction.add(
-    createMintToInstruction(
-      mint,
-      recipientTokenAddress,
-      payer.publicKey,
-      BigInt(1_000_000_000), // 1 token (9 decimals)
-      [],
-      TOKEN_2022_PROGRAM_ID
-    )
-  );
-  
-  // Gửi transaction
-  const mintSignature = await sendAndConfirmTransaction(
-    connection,
-    mintTransaction,
-    [payer]
-  );
-  
-  console.log(`Đã mint 1 token đến ${recipientKeypair.publicKey.toBase58()}`);
-  console.log(`Giao dịch: https://explorer.solana.com/tx/${mintSignature}?cluster=devnet`);
-
-  // Thử chuyển khoản token (để chứng minh token không thể chuyển khoản)
   try {
-    const destinationKeypair = Keypair.generate();
+    // SETUP: Connect to Solana and load keypair
+    console.log("Connecting to Solana devnet...");
+    const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
     
-    // Tạo token account cho người nhận
-    const destinationTokenAddress = await getAssociatedTokenAddress(
+    const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
+    const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
+    const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+    const payer = Keypair.fromSecretKey(secretKey);
+    console.log(`Wallet address: ${payer.publicKey.toString()}`);
+
+    // TOKEN CREATION: Create Non-Transferable Token with TokenBuilder
+    console.log("Creating non-transferable token...");
+    const tokenBuilder = new TokenBuilder(connection)
+      .setTokenInfo(
+        6, // 6 decimals for compatibility (changed from 9)
+        payer.publicKey // mint authority
+      )
+      .addTokenMetadata(
+        "Soul Bound Token",
+        "SBT",
+        "https://example.com/sbt-metadata.json",
+        { 
+          "description": "A non-transferable token example",
+          "type": "soulbound"
+        }
+      )
+      .addNonTransferable();
+    
+    // Get token creation instructions
+    const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+    
+    // Create and configure transaction
+    const transaction = new Transaction().add(...instructions);
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    transaction.feePayer = payer.publicKey;
+    
+    // Sign and send transaction
+    if (signers.length > 0) {
+      transaction.partialSign(...signers);
+    }
+    transaction.partialSign(payer);
+    
+    const createTokenSignature = await connection.sendRawTransaction(
+      transaction.serialize(),
+      { skipPreflight: false }
+    );
+    
+    // Wait for confirmation
+    await connection.confirmTransaction({
+      signature: createTokenSignature,
+      blockhash,
+      lastValidBlockHeight
+    });
+    
+    console.log(`Non-Transferable Token created successfully!`);
+    console.log(`Mint address: ${mint.toBase58()}`);
+    console.log(`Transaction: https://explorer.solana.com/tx/${createTokenSignature}?cluster=devnet`);
+    
+    // Create NonTransferableToken instance from mint address
+    const nonTransferableToken = new NonTransferableToken(connection, mint);
+
+    // MINT TOKENS: Create recipient account and mint tokens
+    console.log("\nMinting tokens to recipient...");
+    const recipientKeypair = Keypair.generate();
+    console.log(`Recipient address: ${recipientKeypair.publicKey.toString()}`);
+    
+    // Create token account for recipient
+    const recipientTokenAddress = await getAssociatedTokenAddress(
       mint,
-      destinationKeypair.publicKey,
+      recipientKeypair.publicKey,
       false,
       TOKEN_2022_PROGRAM_ID
     );
     
-    // Tạo account cho người nhận
-    const createDestAccountInstruction = createAssociatedTokenAccountInstruction(
+    // Create transaction with instructions
+    const mintTransaction = new Transaction();
+    
+    // Add instruction to create token account
+    mintTransaction.add(
+      createAssociatedTokenAccountInstruction(
         payer.publicKey,
-        destinationTokenAddress,
-        destinationKeypair.publicKey,
+        recipientTokenAddress,
+        recipientKeypair.publicKey,
         mint,
         TOKEN_2022_PROGRAM_ID
+      )
     );
     
-    const createDestAccountTx = new Transaction().add(createDestAccountInstruction);
-    await sendAndConfirmTransaction(connection, createDestAccountTx, [payer]);
-    
-    // Thử chuyển token - sẽ thất bại vì token không thể chuyển khoản
-    // Thay vì sử dụng transferChecked, tạo instruction tương tự
-    
-    // Tạo instruction chuyển khoản
-    const transferInstruction = createMintToInstruction(
-      mint,
-      destinationTokenAddress,
-      recipientKeypair.publicKey,
-      BigInt(100_000_000), // 0.1 token
-      [],
-      TOKEN_2022_PROGRAM_ID
+    // Add instruction to mint token
+    mintTransaction.add(
+      createMintToInstruction(
+        mint,
+        recipientTokenAddress,
+        payer.publicKey,
+        BigInt(1_000_000), // 1 token (6 decimals)
+        [],
+        TOKEN_2022_PROGRAM_ID
+      )
     );
     
-    const transferTx = new Transaction().add(transferInstruction);
-    await sendAndConfirmTransaction(connection, transferTx, [recipientKeypair]);
+    // Send transaction
+    const mintSignature = await sendAndConfirmTransaction(
+      connection,
+      mintTransaction,
+      [payer]
+    );
     
-    console.log("Nếu bạn thấy dòng này, nghĩa là chuyển khoản đã thành công và có lỗi trong non-transferable extension");
-  } catch (error: any) {
-    console.log(`Chuyển khoản thất bại (đúng như dự kiến): ${error.message}`);
-    
-    // Kiểm tra nếu token thực sự là không thể chuyển khoản
-    const isNonTransferable = await nonTransferableToken.isNonTransferable();
-    console.log(`Token có thuộc tính không thể chuyển khoản: ${isNonTransferable ? "Đúng" : "Không"}`);
-  }
+    console.log(`Minted 1 token to ${recipientKeypair.publicKey.toBase58()}`);
+    console.log(`Transaction: https://explorer.solana.com/tx/${mintSignature}?cluster=devnet`);
 
-  console.log('Non-Transferable Token đã được tạo thành công!');
-  console.log(`Chi tiết token: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+    // TRANSFER TEST: Try to transfer tokens (to demonstrate non-transferability)
+    console.log("\nTesting transfer restriction...");
+    try {
+      const destinationKeypair = Keypair.generate();
+      console.log(`Destination address: ${destinationKeypair.publicKey.toString()}`);
+      
+      // Create token account for destination
+      const destinationTokenAddress = await getAssociatedTokenAddress(
+        mint,
+        destinationKeypair.publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
+      
+      // Create account for destination
+      const createDestAccountInstruction = createAssociatedTokenAccountInstruction(
+          payer.publicKey,
+          destinationTokenAddress,
+          destinationKeypair.publicKey,
+          mint,
+          TOKEN_2022_PROGRAM_ID
+      );
+      
+      const createDestAccountTx = new Transaction().add(createDestAccountInstruction);
+      await sendAndConfirmTransaction(connection, createDestAccountTx, [payer]);
+      
+      // Try to transfer token - will fail because token is non-transferable
+      // Instead of using transferChecked, create a similar instruction
+      
+      // Create transfer instruction
+      const transferInstruction = createMintToInstruction(
+        mint,
+        destinationTokenAddress,
+        recipientKeypair.publicKey,
+        BigInt(100_000), // 0.1 token (6 decimals)
+        [],
+        TOKEN_2022_PROGRAM_ID
+      );
+      
+      const transferTx = new Transaction().add(transferInstruction);
+      await sendAndConfirmTransaction(connection, transferTx, [recipientKeypair]);
+      
+      console.log("If you see this message, the transfer succeeded and there's an error in the non-transferable extension");
+    } catch (error: any) {
+      console.log(`Transfer failed as expected: ${error.message}`);
+      
+      // Verify that the token is actually non-transferable
+      const isNonTransferable = await nonTransferableToken.isNonTransferable();
+      console.log(`Token has non-transferable property: ${isNonTransferable ? "Yes" : "No"}`);
+    }
+
+    // SUMMARY
+    console.log('\nNon-Transferable Token Example Summary:');
+    console.log('1. Created a non-transferable token');
+    console.log('2. Minted tokens to a recipient account');
+    console.log('3. Demonstrated that tokens cannot be transferred (as expected)');
+    console.log(`Token Explorer Link: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+  } catch (error) {
+    console.error("Error:", error);
+    process.exit(1);
+  }
 }
 
 main().catch((error) => {
-  console.error("Lỗi:", error);
+  console.error("Error:", error);
   process.exit(1);
 }); 

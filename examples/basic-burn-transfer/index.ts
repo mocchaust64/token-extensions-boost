@@ -1,41 +1,36 @@
 import { 
   Connection, 
-  Keypair, 
-  PublicKey, 
+  Keypair,  
   clusterApiUrl,
   Transaction,
-  sendAndConfirmTransaction
+  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import * as fs from "fs";
 import * as path from "path";
 import { TokenBuilder, Token } from "../../src";
 
-import { 
-  TOKEN_2022_PROGRAM_ID,
-  createTransferCheckedInstruction
-} from "@solana/spl-token";
 
-// Hàm trợ giúp để đợi một khoảng thời gian
+// Helper function to wait for a specific time
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function main() {
-  // Kết nối đến Solana devnet
+  // Connect to Solana devnet
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
   
-  // Đọc keypair từ tệp solana config
+  // Read keypair from solana config file
   const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
   const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
   const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
   const payer = Keypair.fromSecretKey(secretKey);
   
-  console.log("=== Tạo token với nhiều extension ===");
+  console.log("=== Creating token with multiple extensions ===");
   
-  // Tạo token mới với nhiều extension
+  // Create a new token with multiple extensions
   const tokenBuilder = new TokenBuilder(connection)
     .setTokenInfo(9, payer.publicKey)  // 9 decimals
-    .addMetadata(                      // Thêm extension Metadata
+    .addMetadata(                      // Add Metadata extension
       "Multi-Feature Test Token", 
       "MFTT", 
       "https://example.com/token.json",
@@ -45,86 +40,86 @@ async function main() {
         "website": "https://example.com"
       }
     )
-    .addTransferFee(                   // Thêm extension TransferFee
-      100,                            // 1% phí (100 basis points)
-      BigInt(1000000000),             // Phí tối đa 1 token (với 9 decimals)
-      payer.publicKey,                // Authority để thay đổi phí
-      payer.publicKey                 // Authority để rút phí
+    .addTransferFee(                   // Add TransferFee extension
+      100,                            // 1% fee (100 basis points)
+      BigInt(1000000000),             // Maximum fee of 1 token (with 9 decimals)
+      payer.publicKey,                // Authority to change fee
+      payer.publicKey                 // Authority to withdraw fee
     )
-    .addPermanentDelegate(             // Thêm extension PermanentDelegate
+    .addPermanentDelegate(             // Add PermanentDelegate extension
       payer.publicKey                 // Permanent delegate
     );
   
-  console.log("Đang tạo token với nhiều extension...");
+  console.log("Creating token with multiple extensions...");
   const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
   
-  // Tạo và ký transaction
+  // Create and sign transaction
   const transaction = new Transaction().add(...instructions);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
   transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.feePayer = payer.publicKey;
   
-  // Ký và gửi transaction
+  // Sign and send transaction
   transaction.sign(...signers, payer);
   const transactionSignature = await connection.sendRawTransaction(
     transaction.serialize(),
     { skipPreflight: false }
   );
   
-  // Đợi xác nhận
+  // Wait for confirmation
   await connection.confirmTransaction({
     signature: transactionSignature,
     blockhash,
     lastValidBlockHeight
   });
   
-  console.log(`Token đã được tạo: ${mint.toString()}`);
+  console.log(`Token has been created: ${mint.toString()}`);
   console.log(`Transaction: https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`);
   
-  // Tạo đối tượng Token từ mint address
+  // Create Token object from mint address
   const token = new Token(connection, mint);
   
-  // Đợi một chút để đảm bảo transaction được xác nhận
-  console.log("Đợi để xác nhận transaction...");
+  // Set decimals (hardcoded for this example)
+  token.setDecimals(9);
+  
+  // Wait a bit to ensure transaction is confirmed
+  console.log("Waiting to confirm transaction...");
   await sleep(3000);
   
-  // Tạo tài khoản token cho người dùng
-  console.log("Tạo tài khoản token cho người dùng...");
+  // Create token account for user
+  console.log("Creating token account for user...");
   const { instructions: createAccountIx, address: userTokenAddress, accountExists } = 
     await token.createTokenAccountInstructions(payer.publicKey, payer.publicKey);
   
   if (!accountExists) {
-    // Nếu tài khoản chưa tồn tại, tạo transaction để tạo mới
+    // If account doesn't exist, create transaction to create new one
     const createAccountTx = new Transaction().add(...createAccountIx);
     createAccountTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     createAccountTx.feePayer = payer.publicKey;
     
-    // Ký và gửi transaction
+    // Sign and send transaction
     const userTokenSignature = await sendAndConfirmTransaction(
       connection,
       createAccountTx,
       [payer]
     );
     
-    console.log(`Tài khoản token người dùng: ${userTokenAddress.toString()}`);
-    console.log(`Giao dịch tạo tài khoản: https://explorer.solana.com/tx/${userTokenSignature}?cluster=devnet`);
+    console.log(`User token account: ${userTokenAddress.toString()}`);
+    console.log(`Account creation transaction: https://explorer.solana.com/tx/${userTokenSignature}?cluster=devnet`);
   } else {
-    console.log(`Tài khoản token người dùng đã tồn tại: ${userTokenAddress.toString()}`);
+    console.log(`User token account already exists: ${userTokenAddress.toString()}`);
   }
   
-  // Đợi một chút để đảm bảo transaction được xác nhận
+  // Wait a bit to ensure transaction is confirmed
   await sleep(2000);
   
-  // Mint một số token cho người dùng
-  const mintAmount = BigInt(1000_000_000_000);  // 1000 tokens với 9 decimals
-  
-  // Tạo một tài khoản khác để chuyển token đến
+  // Create another account to transfer tokens to
   const recipient = Keypair.generate();
-  console.log(`Người nhận: ${recipient.publicKey.toString()}`);
+  console.log(`Recipient: ${recipient.publicKey.toString()}`);
   
-  console.log("Tạo tài khoản token cho người nhận...");
-  // Sử dụng phương thức getOrCreateTokenAccount từ SDK
+  console.log("Creating token account for recipient...");
+  // Use getOrCreateTokenAccount method from SDK
   const recipientTokenAccount = await token.getOrCreateTokenAccount(
     payer,
     recipient.publicKey,
@@ -132,23 +127,23 @@ async function main() {
     "confirmed",
     { skipPreflight: true }
   );
-  console.log(`Tài khoản token người nhận: ${recipientTokenAccount.address.toString()}`);
+  console.log(`Recipient token account: ${recipientTokenAccount.address.toString()}`);
   
-  // Đợi một chút để đảm bảo transaction được xác nhận
-  await sleep(2000);
+  // Mint some tokens for the user
+  const mintAmount = BigInt(1000_000_000_000);  // 1000 tokens with 9 decimals
   
-  // Mint tokens - sử dụng phương thức createMintToInstructions của SDK
-  console.log(`\n=== Mint ${Number(mintAmount) / 1e9} tokens ===`);
+  // Mint tokens - using createMintToInstructions method from SDK
+  console.log(`\n=== Minting ${Number(mintAmount) / 1e9} tokens ===`);
   
   try {
-    // Tạo instructions để mint
+    // Create mint instructions
     const { instructions: mintInstructions } = token.createMintToInstructions(
       userTokenAddress,
       payer.publicKey,
       mintAmount
     );
     
-    // Tạo và gửi transaction
+    // Create and send transaction
     const mintTx = new Transaction().add(...mintInstructions);
     mintTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     mintTx.feePayer = payer.publicKey;
@@ -159,46 +154,39 @@ async function main() {
       [payer]
     );
     
-    console.log(`Đã mint ${Number(mintAmount) / 1e9} tokens vào tài khoản ${userTokenAddress.toString()}`);
-    console.log(`Giao dịch mint: https://explorer.solana.com/tx/${mintSignature}?cluster=devnet`);
+    console.log(`Minted ${Number(mintAmount) / 1e9} tokens to account ${userTokenAddress.toString()}`);
+    console.log(`Mint transaction: https://explorer.solana.com/tx/${mintSignature}?cluster=devnet`);
     
-    // Đợi một chút để đảm bảo transaction được xác nhận
-    console.log("Đợi để xác nhận transaction...");
+    // Wait a bit to ensure transaction is confirmed
+    console.log("Waiting to confirm transaction...");
     await sleep(2000);
     
   } catch (error: any) {
-    console.error(`Lỗi khi mint tokens: ${error.message}`);
+    console.error(`Error minting tokens: ${error.message}`);
     process.exit(1);
   }
   
-  // Chuyển tokens - sử dụng phương thức createTransferInstructions của SDK
-  console.log(`\n=== Chuyển tokens ===`);
+  // Transfer tokens using SDK method that has been fixed
+  console.log(`\n=== Transferring tokens ===`);
   const transferAmount = BigInt(500_000_000_000);  // 500 tokens
   
   try {
-    // Tạo instructions để chuyển token
-    const transferInstructions = [
-      createTransferCheckedInstruction(
-        userTokenAddress,                   // source
-        mint,                               // mint
-        recipientTokenAccount.address,      // destination
-        payer.publicKey,                    // owner
-        transferAmount,                     // amount
-        9,                                  // decimals
-        [],                                 // multisigners
-        TOKEN_2022_PROGRAM_ID               // program ID
-      )
-    ];
+    // Use the improved createTransferInstructions method from SDK
+    // Transfer to the created token account rather than wallet address
+    const { instructions: transferInstructions } = await token.createTransferInstructions(
+      userTokenAddress,
+      recipientTokenAccount.address, // Use the token account that was created
+      payer.publicKey,
+      transferAmount,
+      9, // decimals
+      {
+        memo: "Transfer token from token-extensions-boost example",
+        createDestinationIfNeeded: true,
+        allowOwnerOffCurve: true, // Allow addresses that may be off-curve
+      }
+    );
     
-    // Thêm memo nếu cần
-    const memoId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-    transferInstructions.push({
-      keys: [{ pubkey: payer.publicKey, isSigner: true, isWritable: true }],
-      programId: memoId,
-      data: Buffer.from("Chuyển token từ ví dụ token-extensions-boost", "utf-8")
-    });
-    
-    // Tạo và gửi transaction
+    // Create and send transaction
     const transferTx = new Transaction().add(...transferInstructions);
     transferTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     transferTx.feePayer = payer.publicKey;
@@ -209,27 +197,30 @@ async function main() {
       [payer]
     );
     
-    console.log(`Đã chuyển ${Number(transferAmount) / 1e9} tokens tới ${recipient.publicKey.toString()}`);
-    console.log(`Giao dịch chuyển: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
+    console.log(`Transferred ${Number(transferAmount) / 1e9} tokens to ${recipient.publicKey.toString()}`);
+    console.log(`Transfer transaction: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
     
-    // Do sử dụng TransferFee extension, phí chuyển khoản sẽ được thu
-    console.log(`Phí chuyển khoản ước tính: ${Number(transferAmount) * 0.01} tokens (1%)`);
+    // Due to TransferFee extension, transfer fees will be collected
+    console.log(`Estimated transfer fee: ${Number(transferAmount) * 0.01} tokens (1%)`);
     
-    // Đợi một chút để đảm bảo transaction được xác nhận
-    console.log("Đợi để xác nhận transaction...");
+    // Wait a bit to ensure transaction is confirmed
+    console.log("Waiting to confirm transaction...");
     await sleep(2000);
     
   } catch (error: any) {
-    console.error(`Lỗi khi chuyển tokens: ${error.message}`);
-    console.error(`Chi tiết lỗi:`, error);
+    console.error(`Error transferring tokens: ${error.message}`);
+    console.error(`Error details:`, error);
+    
+    // No longer need fallback methods as the SDK has been improved
+    console.log("If you're still experiencing issues, check your Token, Mint and Associated Token Account configuration");
   }
   
-  // Burn tokens - sử dụng phương thức createBurnInstructions của SDK
-  console.log(`\n=== Burn tokens ===`);
+  // Burn tokens - using token.createBurnInstructions method from SDK
+  console.log(`\n=== Burning tokens ===`);
   const burnAmount = BigInt(200_000_000_000);  // 200 tokens
   
   try {
-    // Tạo instructions để đốt token
+    // Create instructions to burn tokens using the SDK
     const { instructions: burnInstructions } = token.createBurnInstructions(
       userTokenAddress,
       payer.publicKey,
@@ -237,7 +228,7 @@ async function main() {
       9 // decimals
     );
     
-    // Tạo và gửi transaction
+    // Create and send transaction
     const burnTx = new Transaction().add(...burnInstructions);
     burnTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     burnTx.feePayer = payer.publicKey;
@@ -248,41 +239,61 @@ async function main() {
       [payer]
     );
     
-    console.log(`Đã burn ${Number(burnAmount) / 1e9} tokens từ ${userTokenAddress.toString()}`);
-    console.log(`Giao dịch burn: https://explorer.solana.com/tx/${burnSignature}?cluster=devnet`);
+    console.log(`Burned ${Number(burnAmount) / 1e9} tokens from ${userTokenAddress.toString()}`);
+    console.log(`Burn transaction: https://explorer.solana.com/tx/${burnSignature}?cluster=devnet`);
   } catch (error: any) {
-    console.error(`Lỗi khi burn tokens: ${error.message}`);
+    console.error(`Error burning tokens: ${error.message}`);
   }
   
-  // Thử nghiệm chuyển token bằng permanent delegate
-  console.log(`\n=== Chuyển tokens bằng Permanent Delegate ===`);
+  // Mint additional tokens to recipient to demonstrate permanent delegate
+  console.log(`\n=== Minting tokens to recipient for permanent delegate demo ===`);
+  try {
+    const recipientMintAmount = BigInt(100_000_000_000);  // 100 tokens with 9 decimals
+    
+    const { instructions: recipientMintInstructions } = token.createMintToInstructions(
+      recipientTokenAccount.address,
+      payer.publicKey,
+      recipientMintAmount
+    );
+    
+    const recipientMintTx = new Transaction().add(...recipientMintInstructions);
+    recipientMintTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    recipientMintTx.feePayer = payer.publicKey;
+    
+    const recipientMintSignature = await sendAndConfirmTransaction(
+      connection,
+      recipientMintTx,
+      [payer]
+    );
+    
+    console.log(`Minted ${Number(recipientMintAmount) / 1e9} tokens to recipient for permanent delegate demo`);
+    await sleep(2000);
+  } catch (error: any) {
+    console.error(`Error minting tokens to recipient: ${error.message}`);
+  }
+  
+  // Test transferring tokens using permanent delegate with improved SDK method
+  console.log(`\n=== Transferring tokens using Permanent Delegate ===`);
   
   try {
     const delegateTransferAmount = BigInt(50_000_000_000); // 50 tokens
     
-    // Tạo instructions để chuyển token bằng permanent delegate
-    const delegateTransferInstructions = [
-      createTransferCheckedInstruction(
-        recipientTokenAccount.address,      // source
-        mint,                               // mint
-        userTokenAddress,                   // destination
-        payer.publicKey,                    // owner (permanent delegate)
-        delegateTransferAmount,             // amount
-        9,                                  // decimals
-        [],                                 // multisigners
-        TOKEN_2022_PROGRAM_ID               // program ID
-      )
-    ];
+    // Use the improved createPermanentDelegateTransferInstructions method from SDK
+    const { instructions: delegateTransferInstructions } = await token.createPermanentDelegateTransferInstructions(
+      recipientTokenAccount.address,
+      userTokenAddress, // Use token account address directly
+      payer.publicKey, // permanent delegate
+      delegateTransferAmount,
+      {
+        memo: "Transfer by permanent delegate",
+        createDestinationIfNeeded: true,
+        decimals: 9, // Provide decimals to avoid blockchain queries
+        allowOwnerOffCurve: true, // Allow addresses that may be off-curve
+        verifySourceBalance: true // Verify balance before transfer
+      }
+    );
     
-    // Thêm memo nếu cần
-    const memoId = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-    delegateTransferInstructions.push({
-      keys: [{ pubkey: payer.publicKey, isSigner: true, isWritable: true }],
-      programId: memoId,
-      data: Buffer.from("Chuyển bởi permanent delegate", "utf-8")
-    });
-    
-    // Tạo và gửi transaction
+    // Create and send transaction
     const delegateTx = new Transaction().add(...delegateTransferInstructions);
     delegateTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     delegateTx.feePayer = payer.publicKey;
@@ -293,14 +304,14 @@ async function main() {
       [payer]
     );
     
-    console.log(`Permanent Delegate đã chuyển ${Number(delegateTransferAmount) / 1e9} tokens từ tài khoản của người nhận về cho người dùng!`);
-    console.log(`Giao dịch delegate: https://explorer.solana.com/tx/${delegateTransferSignature}?cluster=devnet`);
+    console.log(`Permanent Delegate transferred ${Number(delegateTransferAmount) / 1e9} tokens from recipient's account back to user!`);
+    console.log(`Delegate transaction: https://explorer.solana.com/tx/${delegateTransferSignature}?cluster=devnet`);
   } catch (error: any) {
-    console.error(`Lỗi khi sử dụng permanent delegate: ${error.message}`);
-    console.error(`Chi tiết lỗi:`, error);
+    console.error(`Error using permanent delegate SDK method: ${error.message}`);
+    console.error(`Error details:`, error);
   }
   
-  console.log(`\n=== Thông tin token ===`);
+  console.log(`\n=== Token information ===`);
   console.log(`Mint address: ${mint.toString()}`);
   console.log(`Token details: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
   console.log(`Token metadata: https://example.com/token.json`);

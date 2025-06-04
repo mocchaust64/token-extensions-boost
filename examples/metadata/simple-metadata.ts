@@ -1,11 +1,11 @@
- import {
+import {
   Connection,
   Keypair,
   clusterApiUrl,
 } from "@solana/web3.js";
-import fs from 'fs';
-import path from 'path';
-import { TokenBuilder, TokenMetadataToken } from "../../dist"; // Import từ SDK của chúng ta
+import * as fs from 'fs';
+import * as path from 'path';
+import { TokenBuilder, TokenMetadataToken } from "../../dist"; // Import from our SDK
 
 async function main() {
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
@@ -35,11 +35,11 @@ async function main() {
         metadata.additionalMetadata
       );
     
-  // Tạo instructions và transaction
+  // Create instructions and transaction
   const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
   const transaction = tokenBuilder.buildTransaction(instructions, payer.publicKey);
   
-  // Gửi transaction
+  // Send transaction
   const signature = await connection.sendTransaction(
     transaction, 
     [payer, ...signers],
@@ -51,11 +51,11 @@ async function main() {
     console.log(`Mint address: ${mint.toString()}`);
   console.log(`Transaction: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
     
-  // Tạo instance của token để đọc metadata
+  // Create token instance to read metadata
   const tokenMetadataToken = new TokenMetadataToken(connection, mint, metadata);
   
   try {
-    // Cố gắng đọc metadata từ blockchain
+    // Try to read metadata from blockchain
     const tokenMetadata = await tokenMetadataToken.getTokenMetadata();
     
     console.log(`Token name: ${tokenMetadata.name}`);
@@ -69,8 +69,8 @@ async function main() {
       }
     }
   } catch (error) {
-    console.error("Lỗi khi đọc metadata từ blockchain:", error);
-    console.log("Sử dụng metadata đã biết:");
+    console.error("Error reading metadata from blockchain:", error);
+    console.log("Using known metadata:");
     console.log(`Token name: ${metadata.name}`);
     console.log(`Token symbol: ${metadata.symbol}`);
     console.log(`Token URI: ${metadata.uri}`);

@@ -3,34 +3,34 @@ import { getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import * as fs from "fs";
 import * as path from "path";
 
-import { TransferFeeToken, TokenBuilder } from "solana-token-extension-boost";
+import { TransferFeeToken, TokenBuilder } from "../../src";
 
 async function main() {
-  // Kết nối tới Solana devnet
+  // Connect to Solana devnet
   const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
   
-  // Đọc ví từ file cục bộ - trong ứng dụng thực tế, sẽ sử dụng wallet adapter
+  // Read wallet from local file - in a real application, would use a wallet adapter
   const walletPath = path.join(process.env.HOME!, ".config", "solana", "id.json");
   const secretKeyString = fs.readFileSync(walletPath, { encoding: "utf8" });
   const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
   const payer = Keypair.fromSecretKey(secretKey);
   
-  console.log("Địa chỉ ví:", payer.publicKey.toString());
+  console.log("Wallet address:", payer.publicKey.toString());
   
-  // 1. Tạo instructions cho token với 1% phí chuyển khoản
+  // 1. Create instructions for token with 1% transfer fee
   const tokenBuilder = new TokenBuilder(connection)
-    .setTokenInfo(9, payer.publicKey, payer.publicKey)
+    .setTokenInfo(6, payer.publicKey, payer.publicKey)
     .addTransferFee(
       100, // 1% (100 basis points)
-      BigInt(10_000_000_000), // 10 tokens max fee
+      BigInt(10_000_000), // 10 tokens max fee (with 6 decimals)
       payer.publicKey, // transferFeeConfigAuthority
       payer.publicKey  // withdrawWithheldAuthority
     );
   
-  // Lấy instructions thay vì thực hiện transaction trực tiếp
+  // Get instructions instead of performing transaction directly
   const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
   
-  // Tạo và gửi transaction
+  // Create and send transaction
   const transaction = new Transaction().add(...instructions);
   const createTokenSignature = await sendAndConfirmTransaction(
     connection,
@@ -38,20 +38,20 @@ async function main() {
     [payer, ...signers]
   );
   
-  console.log(`Token đã được tạo: ${mint.toString()}`);
-  console.log(`Giao dịch: https://explorer.solana.com/tx/${createTokenSignature}?cluster=devnet`);
+  console.log(`Token created: ${mint.toString()}`);
+  console.log(`Transaction: https://explorer.solana.com/tx/${createTokenSignature}?cluster=devnet`);
   
   const transferFeeToken = new TransferFeeToken(connection, mint, {
     feeBasisPoints: 100,
-    maxFee: BigInt(10_000_000_000),
+    maxFee: BigInt(10_000_000),
     transferFeeConfigAuthority: payer.publicKey,
     withdrawWithheldAuthority: payer.publicKey
   });
   
-  // 2. Tạo token account và mint tokens
-  const mintAmount = BigInt(1000_000_000_000);
+  // 2. Create token account and mint tokens
+  const mintAmount = BigInt(1000_000_000);
   
-  // Tạo instructions thay vì thực hiện trực tiếp
+  // Create instructions instead of performing directly
   const { instructions: mintInstructions, address: ownerTokenAddress } = 
     await transferFeeToken.createAccountAndMintToInstructions(
       payer.publicKey,
@@ -60,7 +60,7 @@ async function main() {
       payer.publicKey
     );
   
-  // Tạo và gửi transaction
+  // Create and send transaction
   const mintTransaction = new Transaction().add(...mintInstructions);
   const mintSignature = await sendAndConfirmTransaction(
     connection,
@@ -68,8 +68,8 @@ async function main() {
     [payer]
   );
   
-  console.log(`Đã mint ${Number(mintAmount) / 1e9} tokens đến ${ownerTokenAddress.toString()}`);
-  console.log(`Giao dịch: https://explorer.solana.com/tx/${mintSignature}?cluster=devnet`);
+  console.log(`Minted ${Number(mintAmount) / 1e6} tokens to ${ownerTokenAddress.toString()}`);
+  console.log(`Transaction: https://explorer.solana.com/tx/${mintSignature}?cluster=devnet`);
   
   const recipient = Keypair.generate();
   
@@ -84,20 +84,20 @@ async function main() {
     transferFeeToken.getProgramId()
   );
   
-  // 3. Chuyển tokens với 1% phí
-  const transferAmount = BigInt(100_000_000_000);
+  // 3. Transfer tokens with 1% fee
+  const transferAmount = BigInt(100_000_000);
   const expectedFee = transferFeeToken.calculateFee(transferAmount);
   
-  // Tạo instruction chuyển khoản thay vì thực hiện trực tiếp
+  // Create transfer instruction instead of performing directly
   const transferInstruction = transferFeeToken.createTransferInstruction(
     ownerTokenAddress,
     recipientTokenAccount.address,
     payer.publicKey,
     transferAmount,
-    9
+    6
   );
   
-  // Tạo và gửi transaction
+  // Create and send transaction
   const transferTransaction = new Transaction().add(transferInstruction);
   const transferSignature = await sendAndConfirmTransaction(
     connection,
@@ -105,11 +105,11 @@ async function main() {
     [payer]
   );
   
-  console.log(`Đã chuyển ${Number(transferAmount) / 1e9} tokens với ${Number(expectedFee) / 1e9} phí`);
-  console.log(`Giao dịch: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
+  console.log(`Transferred ${Number(transferAmount) / 1e6} tokens with ${Number(expectedFee) / 1e6} fee`);
+  console.log(`Transaction: https://explorer.solana.com/tx/${transferSignature}?cluster=devnet`);
   
   try {
-    // 4. Thu thập phí từ các tài khoản vào mint
+    // 4. Harvest fees from accounts to mint
     const harvestInstruction = transferFeeToken.createHarvestWithheldTokensToMintInstruction(
       [recipientTokenAccount.address]
     );
@@ -121,10 +121,10 @@ async function main() {
       [payer]
     );
     
-    console.log(`Đã thu thập phí vào mint`);
-    console.log(`Giao dịch: https://explorer.solana.com/tx/${harvestSignature}?cluster=devnet`);
+    console.log(`Fees harvested to mint`);
+    console.log(`Transaction: https://explorer.solana.com/tx/${harvestSignature}?cluster=devnet`);
     
-    // 5. Rút phí từ mint vào ví
+    // 5. Withdraw fees from mint to wallet
     const feeRecipientTokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       payer,
@@ -148,19 +148,19 @@ async function main() {
       [payer]
     );
     
-    console.log(`Đã rút phí đến ${feeRecipientTokenAccount.address.toString()}`);
-    console.log(`Giao dịch: https://explorer.solana.com/tx/${withdrawSignature}?cluster=devnet`);
+    console.log(`Fees withdrawn to ${feeRecipientTokenAccount.address.toString()}`);
+    console.log(`Transaction: https://explorer.solana.com/tx/${withdrawSignature}?cluster=devnet`);
   } catch (error: any) {
-    console.log("Lỗi xử lý phí:", error.message);
-    // Lỗi xử lý phí có thể xảy ra nếu không có phí để thu thập
+    console.log("Error processing fees:", error.message);
+    // Fee processing errors may occur if there are no fees to harvest
   }
   
-  console.log(`Chi tiết token: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
+  console.log(`Token details: https://explorer.solana.com/address/${mint.toString()}?cluster=devnet`);
 }
 
 main()
-  .then(() => console.log("Thành công"))
+  .then(() => console.log("Success"))
   .catch(error => {
-    console.error("Lỗi:", error);
+    console.error("Error:", error);
     process.exit(1);
   }); 

@@ -1,10 +1,10 @@
-
-
 import {
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
   clusterApiUrl,
+  Transaction,
+  sendAndConfirmTransaction
 } from '@solana/web3.js';
 import { ExtensionType } from '@solana/spl-token';
 import * as fs from 'fs';
@@ -176,10 +176,19 @@ async function testExtensionPairs() {
         );
       }
       
-    
-      const { mint, token } = await tokenBuilder.createToken(payer);
+      const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
       
-      console.log(`✅ ${pair.name}: Success! Token: ${mint.toString()}`);
+      const transaction = new Transaction();
+      instructions.forEach(ix => transaction.add(ix));
+      
+      const signature = await sendAndConfirmTransaction(
+        connection,
+        transaction,
+        [payer, ...signers],
+        { commitment: 'confirmed' }
+      );
+      
+      console.log(`✅ ${pair.name}: Success! Token: ${mint.toString()}, Transaction: ${signature}`);
     } catch (error: any) {
       console.log(`❌ ${pair.name}: Failed! Error: ${error.message}`);
     }

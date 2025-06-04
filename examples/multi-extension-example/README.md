@@ -7,12 +7,17 @@ This directory contains examples demonstrating how to create tokens with multipl
 1. **Create tokens with multiple extensions (without metadata)**
    - File: `multiple-extensions-example.ts`
    - Description: Creates a token with TransferFee, InterestBearing, and PermanentDelegate
-   - Method used: `createToken()`
+   - Method used: `createTokenInstructions()`
 
 2. **Create tokens with metadata and multiple extensions**
    - File: `metadata-with-extensions-example.ts`
    - Description: Creates a token with TokenMetadata, TransferFee, and PermanentDelegate
-   - Method used: `createToken()`
+   - Method used: `createTokenInstructions()`
+
+3. **Create tokens with specialized extensions**
+   - File: `extensions-test-new.ts`
+   - Description: Creates a token with DefaultAccountState and MintCloseAuthority extensions
+   - Method used: `createTokenInstructions()`
 
 ## Best Practices
 
@@ -25,6 +30,10 @@ When combining extensions, follow these rules:
 3. **Extension order**: The order in which you add extensions to the TokenBuilder is not important - the SDK will automatically arrange them in the optimal order when creating the token.
 
 4. **Decimals**: Consider using 6 decimals instead of 9 to reduce data size and increase compatibility.
+
+5. **Consistent error handling**: Wrap your token creation logic in try-catch blocks to handle potential errors.
+
+6. **Transaction handling**: Follow the pattern of creating, signing, and confirming transactions consistently.
 
 ## Usage
 
@@ -53,8 +62,32 @@ const tokenBuilder = new TokenBuilder(connection)
   // Add PermanentDelegate
   .addPermanentDelegate(delegateKeypair.publicKey);
 
-// Create token with configured extensions
-const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);
+// Get instructions to create token
+const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+
+// Create and configure transaction
+const transaction = new Transaction().add(...instructions);
+const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+transaction.recentBlockhash = blockhash;
+transaction.lastValidBlockHeight = lastValidBlockHeight;
+transaction.feePayer = payer.publicKey;
+
+// Sign and send transaction
+if (signers.length > 0) {
+  transaction.partialSign(...signers);
+}
+transaction.partialSign(payer);
+const transactionSignature = await connection.sendRawTransaction(
+  transaction.serialize(),
+  { skipPreflight: false }
+);
+
+// Wait for confirmation
+await connection.confirmTransaction({
+  signature: transactionSignature,
+  blockhash,
+  lastValidBlockHeight
+});
 ```
 
 ### 2. Create a token with metadata and multiple extensions
@@ -87,8 +120,11 @@ const tokenBuilder = new TokenBuilder(connection)
   // Add PermanentDelegate
   .addPermanentDelegate(delegateKeypair.publicKey);
 
-// Create token with metadata and other extensions
-const { mint, transactionSignature, token } = await tokenBuilder.createToken(payer);
+// Get instructions to create token
+const { instructions, signers, mint } = await tokenBuilder.createTokenInstructions(payer.publicKey);
+
+// Create and configure transaction
+// (Follow the same pattern as in example 1)
 ```
 
 ## Running the Examples
@@ -105,6 +141,13 @@ npx ts-node examples/multi-extension-example/multiple-extensions-example.ts
 ```bash
 npm run build
 npx ts-node examples/multi-extension-example/metadata-with-extensions-example.ts
+```
+
+### Create a token with specialized extensions
+
+```bash
+npm run build
+npx ts-node examples/multi-extension-example/extensions-test-new.ts
 ```
 
 ## Notes on Extension Compatibility
@@ -130,6 +173,9 @@ Not all extensions can be combined with each other. Here are the important rules
    - TransferFee + PermanentDelegate + InterestBearing: Works well
    - TokenMetadata + TransferFee + PermanentDelegate: Works well
    - TokenMetadata + InterestBearing: Works well
+   - DefaultAccountState + MintCloseAuthority: Works well for controlled token lifecycle
 
 The SDK will check the compatibility of extensions and report errors if it detects invalid combinations.
+
+For more detailed information about extension compatibility, see the [Extension Compatibility Guide](../../docs/extension-compatibility.md).
 

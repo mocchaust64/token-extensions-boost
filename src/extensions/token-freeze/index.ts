@@ -17,18 +17,18 @@ import {
 } from '@solana/spl-token';
 
 /**
- * Class để quản lý tính năng đóng băng (freeze) và mở đóng băng (thaw) token
- * Thiết kế để tương thích với wallet adapter trong môi trường web
+ * Class for managing token freeze and thaw functionality
+ * Designed to be compatible with wallet adapter in web environments
  */
 export class TokenFreezeExtension {
   /**
-   * Tạo instruction để đóng băng (freeze) một tài khoản token
-   * @param account - Địa chỉ tài khoản token
-   * @param mint - Địa chỉ mint của token
-   * @param authority - Địa chỉ có quyền freeze
-   * @param multiSigners - Danh sách các signer nếu sử dụng multisig
-   * @param programId - Program ID của Token Extension
-   * @returns Instruction để đóng băng tài khoản
+   * Create instruction to freeze a token account
+   * @param account - Token account address
+   * @param mint - Token mint address
+   * @param authority - Freeze authority address
+   * @param multiSigners - List of signers if using multisig
+   * @param programId - Token Extension Program ID
+   * @returns Instruction to freeze the account
    */
   static createFreezeAccountInstruction(
     account: PublicKey,
@@ -47,13 +47,13 @@ export class TokenFreezeExtension {
   }
 
   /**
-   * Tạo instruction để mở đóng băng (thaw) một tài khoản token
-   * @param account - Địa chỉ tài khoản token
-   * @param mint - Địa chỉ mint của token
-   * @param authority - Địa chỉ có quyền freeze
-   * @param multiSigners - Danh sách các signer nếu sử dụng multisig
-   * @param programId - Program ID của Token Extension
-   * @returns Instruction để mở đóng băng tài khoản
+   * Create instruction to thaw a token account
+   * @param account - Token account address
+   * @param mint - Token mint address
+   * @param authority - Freeze authority address
+   * @param multiSigners - List of signers if using multisig
+   * @param programId - Token Extension Program ID
+   * @returns Instruction to thaw the account
    */
   static createThawAccountInstruction(
     account: PublicKey,
@@ -72,13 +72,13 @@ export class TokenFreezeExtension {
   }
 
   /**
-   * Tạo instruction để cập nhật trạng thái mặc định của token
-   * @param mint - Địa chỉ mint
-   * @param accountState - Trạng thái mặc định mới (frozen hoặc initialized)
-   * @param freezeAuthority - Địa chỉ có quyền freeze
-   * @param multiSigners - Danh sách các signer nếu sử dụng multisig
-   * @param programId - Program ID của Token Extension
-   * @returns Instruction để cập nhật trạng thái mặc định
+   * Create instruction to update the default account state of a token
+   * @param mint - Mint address
+   * @param accountState - New default state (frozen or initialized)
+   * @param freezeAuthority - Freeze authority address
+   * @param multiSigners - List of signers if using multisig
+   * @param programId - Token Extension Program ID
+   * @returns Instruction to update the default state
    */
   static createUpdateDefaultAccountStateInstruction(
     mint: PublicKey,
@@ -97,16 +97,16 @@ export class TokenFreezeExtension {
   }
 
   /**
-   * Chuẩn bị transaction đóng băng (freeze) tài khoản token
-   * Phiên bản tương thích với wallet adapter
+   * Prepare a transaction to freeze a token account
+   * Wallet adapter compatible version
    * 
-   * @param account - Địa chỉ tài khoản token
-   * @param mint - Địa chỉ mint của token
-   * @param authority - Địa chỉ có quyền freeze
-   * @param feePayer - Địa chỉ người trả phí giao dịch
-   * @param multiSigners - Danh sách các signer nếu sử dụng multisig
-   * @param programId - Program ID của Token Extension
-   * @returns Transaction được cấu hình sẵn
+   * @param account - Token account address
+   * @param mint - Token mint address
+   * @param authority - Freeze authority address
+   * @param feePayer - Transaction fee payer address
+   * @param multiSigners - List of signers if using multisig
+   * @param programId - Token Extension Program ID
+   * @returns Configured transaction
    */
   static prepareFreezeAccountTransaction(
     account: PublicKey,
@@ -131,16 +131,16 @@ export class TokenFreezeExtension {
   }
 
   /**
-   * Chuẩn bị transaction mở đóng băng (thaw) tài khoản token
-   * Phiên bản tương thích với wallet adapter
+   * Prepare a transaction to thaw a token account
+   * Wallet adapter compatible version
    * 
-   * @param account - Địa chỉ tài khoản token
-   * @param mint - Địa chỉ mint của token
-   * @param authority - Địa chỉ có quyền freeze
-   * @param feePayer - Địa chỉ người trả phí giao dịch
-   * @param multiSigners - Danh sách các signer nếu sử dụng multisig
-   * @param programId - Program ID của Token Extension
-   * @returns Transaction được cấu hình sẵn
+   * @param account - Token account address
+   * @param mint - Token mint address
+   * @param authority - Freeze authority address
+   * @param feePayer - Transaction fee payer address
+   * @param multiSigners - List of signers if using multisig
+   * @param programId - Token Extension Program ID
+   * @returns Configured transaction
    */
   static prepareThawAccountTransaction(
     account: PublicKey,
@@ -165,16 +165,16 @@ export class TokenFreezeExtension {
   }
 
   /**
-   * Chuẩn bị transaction cập nhật trạng thái mặc định của token
-   * Phiên bản tương thích với wallet adapter
+   * Prepare a transaction to update the default account state of a token
+   * Wallet adapter compatible version
    * 
-   * @param mint - Địa chỉ mint của token
-   * @param accountState - Trạng thái mặc định mới
-   * @param freezeAuthority - Địa chỉ có quyền freeze
-   * @param feePayer - Địa chỉ người trả phí giao dịch
-   * @param multiSigners - Danh sách các signer nếu sử dụng multisig
-   * @param programId - Program ID của Token Extension
-   * @returns Transaction được cấu hình sẵn
+   * @param mint - Token mint address
+   * @param accountState - New default state
+   * @param freezeAuthority - Freeze authority address
+   * @param feePayer - Transaction fee payer address
+   * @param multiSigners - List of signers if using multisig
+   * @param programId - Token Extension Program ID
+   * @returns Configured transaction
    */
   static prepareUpdateDefaultAccountStateTransaction(
     mint: PublicKey,
@@ -199,10 +199,10 @@ export class TokenFreezeExtension {
   }
 
   /**
-   * Phương thức tiện ích để tạo transaction từ instructions
-   * @param instructions - Instructions để thêm vào transaction
-   * @param feePayer - Người trả phí giao dịch
-   * @returns Transaction đã được cấu hình
+   * Utility method to create a transaction from instructions
+   * @param instructions - Instructions to add to the transaction
+   * @param feePayer - Transaction fee payer
+   * @returns Configured transaction
    */
   static buildTransaction(instructions: TransactionInstruction[], feePayer: PublicKey): Transaction {
     const transaction = new Transaction();
