@@ -4,7 +4,6 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
-  sendAndConfirmTransaction,
   TransactionSignature,
   TransactionInstruction,
   ComputeBudgetProgram,
@@ -117,7 +116,6 @@ export class TokenMetadataToken extends Token {
     };
 
     try {
-
       const metadataExtension = TYPE_SIZE + LENGTH_SIZE; // 4 bytes
       const metadataLen = pack(tokenMetadata).length;
       const mintLen = getMintLen([ExtensionType.MetadataPointer]);
@@ -137,16 +135,8 @@ export class TokenMetadataToken extends Token {
         })
       );
       
-      const createAccountSignature = await sendAndConfirmTransaction(
-        connection,
-        createAccountTx,
-        [payer, mintKeypair],
-        { commitment: 'confirmed' }
-      );
+      await connection.sendTransaction(createAccountTx, [payer, mintKeypair]);
       
-      console.log(`Transaction succested : ${createAccountSignature.substring(0, 16)}...`);
-      console.log(`Explorer: https://explorer.solana.com/tx/${createAccountSignature}?cluster=devnet`);   
-      await new Promise(resolve => setTimeout(resolve, 2500));   
       console.log("step 2: create MetadataPointer...");
       
       const initPointerTx = new Transaction().add(
@@ -158,16 +148,8 @@ export class TokenMetadataToken extends Token {
         )
       );
       
-      const initPointerSignature = await sendAndConfirmTransaction(
-        connection,
-        initPointerTx,
-        [payer],
-        { commitment: 'confirmed' }
-      );
+      await connection.sendTransaction(initPointerTx, [payer]);
       
-      console.log(`Transaction create MetadataPointer succesed: ${initPointerSignature.substring(0, 16)}...`);
-      console.log(`Explorer: https://explorer.solana.com/tx/${initPointerSignature}?cluster=devnet`);
-      await new Promise(resolve => setTimeout(resolve, 2500));
       console.log("step 3: create Mint...");
       
       const initMintTx = new Transaction().add(
@@ -180,17 +162,8 @@ export class TokenMetadataToken extends Token {
         )
       );
       
-      const initMintSignature = await sendAndConfirmTransaction(
-        connection,
-        initMintTx,
-        [payer],
-        { commitment: 'confirmed' }
-      );
+      await connection.sendTransaction(initMintTx, [payer]);
       
-      console.log(`Transaction create Mint succesed: ${initMintSignature.substring(0, 16)}...`);
-      console.log(`Explorer: https://explorer.solana.com/tx/${initMintSignature}?cluster=devnet`);
-      
-      await new Promise(resolve => setTimeout(resolve, 2500));
       console.log("step 4: update MetadataPointer...");
       
       const updatePointerTx = new Transaction().add(
@@ -203,17 +176,8 @@ export class TokenMetadataToken extends Token {
         )
       );
       
-      const updatePointerSignature = await sendAndConfirmTransaction(
-        connection,
-        updatePointerTx,
-        [payer],
-        { commitment: 'confirmed' }
-      );
+      await connection.sendTransaction(updatePointerTx, [payer]);
       
-      console.log(`Transaction update MetadataPointer succesed: ${updatePointerSignature.substring(0, 16)}...`);
-      console.log(`Explorer: https://explorer.solana.com/tx/${updatePointerSignature}?cluster=devnet`);
-      
-      await new Promise(resolve => setTimeout(resolve, 2500));
       console.log("step 5: initialize metadata...");
       
       const initMetadataTx = new Transaction().add(
@@ -229,15 +193,7 @@ export class TokenMetadataToken extends Token {
         })
       );
       
-      const initMetadataSignature = await sendAndConfirmTransaction(
-        connection,
-        initMetadataTx,
-        [payer],
-        { commitment: 'confirmed' }
-      );
-      
-      console.log(`Transaction initialize metadata succesed: ${initMetadataSignature.substring(0, 16)}...`);
-      console.log(`Explorer: https://explorer.solana.com/tx/${initMetadataSignature}?cluster=devnet`);
+      await connection.sendTransaction(initMetadataTx, [payer]);
       
       // Thêm các trường metadata bổ sung
       if (metadata.additionalMetadata && Object.keys(metadata.additionalMetadata).length > 0) {
@@ -255,14 +211,9 @@ export class TokenMetadataToken extends Token {
             })
           );
           
-            const addFieldSignature = await sendAndConfirmTransaction(
-              connection,
-              addFieldTx,
-              [payer],
-              { commitment: 'confirmed' }
-            );
+            await connection.sendTransaction(addFieldTx, [payer]);
             
-            console.log(`  ✓ Added field "${key}" successfully: ${addFieldSignature.substring(0, 16)}...`);
+            console.log(`  ✓ Added field "${key}" successfully`);
           } catch (err) {
             console.warn(`  ⚠ Unable to add field "${key}": ${err instanceof Error ? err.message : String(err)}`);
           }
@@ -337,26 +288,19 @@ export class TokenMetadataToken extends Token {
     field: string,
     value: string
   ): Promise<MetadataUpdateResult> {
-    const instruction = createUpdateFieldInstruction({
-      programId: TOKEN_2022_PROGRAM_ID,
-      metadata: this.mint,
-      updateAuthority: authority.publicKey,
+    const instruction = this.createUpdateMetadataFieldInstruction(
+      authority.publicKey,
       field,
-      value,
-    });
-
+      value
+    );
+    
     const transaction = new Transaction().add(instruction);
     
-    const signature = await sendAndConfirmTransaction(
-      this.connection,
-      transaction,
-      [authority],
-      { commitment: 'confirmed' }
-    );
-
+    await this.connection.sendTransaction(transaction, [authority]);
+ 
     const metadata = await this.getTokenMetadata();
     
-    return { signature, metadata };
+    return { signature: "", metadata };
   }
 
   // New method for wallet adapter compatibility
@@ -369,8 +313,8 @@ export class TokenMetadataToken extends Token {
       programId: TOKEN_2022_PROGRAM_ID,
       metadata: this.mint,
       updateAuthority: updateAuthority,
-      field,
-      value,
+      field: field,
+      value: value,
     });
   }
 
@@ -379,26 +323,18 @@ export class TokenMetadataToken extends Token {
     authority: Keypair,
     key: string
   ): Promise<MetadataUpdateResult> {
-    const instruction = createRemoveKeyInstruction({
-      programId: TOKEN_2022_PROGRAM_ID,
-      metadata: this.mint,
-      updateAuthority: authority.publicKey,
-      key,
-      idempotent: false
-    });
-
+    const instruction = this.createRemoveMetadataFieldInstruction(
+      authority.publicKey,
+      key
+    );
+    
     const transaction = new Transaction().add(instruction);
     
-    const signature = await sendAndConfirmTransaction(
-      this.connection,
-      transaction,
-      [authority],
-      { commitment: 'confirmed' }
-    );
-
+    await this.connection.sendTransaction(transaction, [authority]);
+ 
     const metadata = await this.getTokenMetadata();
     
-    return { signature, metadata };
+    return { signature: "", metadata };
   }
 
   // New method for wallet adapter compatibility
@@ -411,8 +347,8 @@ export class TokenMetadataToken extends Token {
       programId: TOKEN_2022_PROGRAM_ID,
       metadata: this.mint,
       updateAuthority: updateAuthority,
-      key,
-      idempotent
+      key: key,
+      idempotent: idempotent
     });
   }
 
@@ -423,28 +359,22 @@ export class TokenMetadataToken extends Token {
   ): Promise<MetadataUpdateResult> {
     const transaction = new Transaction();
     
-    for (const [key, value] of Object.entries(fields)) {
+    // Add instructions for each field
+    for (const [field, value] of Object.entries(fields)) {
       transaction.add(
-        createUpdateFieldInstruction({
-          programId: TOKEN_2022_PROGRAM_ID,
-          metadata: this.mint,
-          updateAuthority: authority.publicKey,
-          field: key,
-          value,
-        })
+        this.createUpdateMetadataFieldInstruction(
+          authority.publicKey,
+          field,
+          value
+        )
       );
     }
     
-    const signature = await sendAndConfirmTransaction(
-      this.connection,
-      transaction,
-      [authority],
-      { commitment: 'confirmed' }
-    );
-
+    await this.connection.sendTransaction(transaction, [authority]);
+ 
     const metadata = await this.getTokenMetadata();
     
-    return { signature, metadata };
+    return { signature: "", metadata };
   }
 
   // New method for wallet adapter compatibility
@@ -493,21 +423,16 @@ export class TokenMetadataToken extends Token {
     currentAuthority: Keypair,
     newAuthority: PublicKey | null
   ): Promise<TransactionSignature> {
-    const instruction = createUpdateAuthorityInstruction({
-      programId: TOKEN_2022_PROGRAM_ID,
-      metadata: this.mint,
-      oldAuthority: currentAuthority.publicKey,
-      newAuthority: newAuthority,
-    });
-
+    const instruction = this.createUpdateMetadataAuthorityInstruction(
+      currentAuthority.publicKey,
+      newAuthority
+    );
+    
     const transaction = new Transaction().add(instruction);
     
-    return await sendAndConfirmTransaction(
-      this.connection,
-      transaction,
-      [currentAuthority],
-      { commitment: 'confirmed' }
-    );
+    await this.connection.sendTransaction(transaction, [currentAuthority]);
+    
+    return "";
   }
 
   // New method for wallet adapter compatibility

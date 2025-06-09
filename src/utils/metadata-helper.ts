@@ -20,7 +20,6 @@ import {
   SystemProgram,
   Connection,
   Transaction,
-  sendAndConfirmTransaction,
   TransactionInstruction,
 } from '@solana/web3.js';
 
@@ -248,29 +247,16 @@ export class MetadataHelper {
         }
       }
       
-      // Send transaction
-      console.log("Sending transaction...");
-      const signature = await sendAndConfirmTransaction(
-        connection,
-        transaction,
-        [payer, mintKeypair],
-        { commitment: 'confirmed' }
-      );
-      
-      console.log(`Token created successfully! Transaction: ${signature}`);
+      // Send transaction using the provided connection
+      await connection.sendTransaction(transaction, [payer, mintKeypair]);
       
       return {
-        mint,
-        txId: signature
+        mint: mint,
+        txId: "" // Không còn trả về ID giao dịch
       };
+      
     } catch (error) {
-      console.error('Error creating token with metadata:', error);
-      
-      if (error instanceof Error) {
-        const errorMessage = error.message;
-        console.error('Error details:', errorMessage);
-      }
-      
+      console.error("Failed to create token with metadata:", error);
       throw error;
     }
   }
